@@ -1,5 +1,5 @@
 const { getWatch, jsonHandler } = require('../lib/binance');
-const { listIds, addId, removeId } = require('../lib/watchdb');
+const { listIds, addId, removeId, purge } = require('../lib/watchdb');
 
 /** يقرأ جسم الطلب في دوال Vercel */
 async function readBody(req) {
@@ -20,6 +20,10 @@ module.exports = async (req, res) => {
     let saved;
     if (req.method === 'POST') {
       const body = await readBody(req);
+      if (body.purge === true) {
+        const r = await purge(key);
+        return res.status(200).end(JSON.stringify({ purged: true, deleted: r.deleted, ids: [], traders: [], missing: [] }));
+      }
       if (body.remove) saved = await removeId(key, body.remove);
       else if (body.add) saved = await addId(key, body.add, body.nickname);
       else saved = await listIds(key);
