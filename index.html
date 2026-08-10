@@ -68,6 +68,16 @@
   .stat-line{display:flex; gap:14px; flex-wrap:wrap; margin-top:6px; padding-inline-start:36px;
     font-family:"IBM Plex Mono",monospace; font-size:11.5px; direction:ltr}
 
+  .keybox{margin:12px 16px; padding:12px 14px; border-radius:10px; background:#16223A}
+  .keybox label{display:block; font-size:12px; color:var(--muted); margin-bottom:7px}
+  .keyrow{display:flex; gap:7px}
+  .keyrow input{flex:1; background:#0C1524; border:1px solid var(--line); color:var(--text);
+    padding:9px 12px; border-radius:8px; font:inherit; font-size:14px;
+    font-family:"IBM Plex Mono",monospace; direction:ltr; text-align:left}
+  .keyrow button{background:var(--amber); color:#15100A; border:0; padding:0 16px;
+    border-radius:8px; font:inherit; font-weight:700; font-size:13px; cursor:pointer}
+  .keyhint{font-size:11.5px; color:var(--dim); margin-top:7px; line-height:1.7}
+
   .wrow{padding:14px 16px; border-top:1px solid #16223455}
   .w-1{display:flex; align-items:center; gap:9px; flex-wrap:wrap}
   .w-name{font-weight:700; font-size:15px; flex:1; min-width:120px}
@@ -510,8 +520,9 @@ function renderDetail(d, id){
         ${has(d.totalClosed)?`<span class="tag">${d.totalClosed} صفقة إجمالاً</span>`:''}
         ${has(t.profitShare)?`<span class="tag">عمولته ${fmtNum(t.profitShare,0)}% من ربحك</span>`:''}
       </div>
-      <div><button class="addbtn ${watchIds().includes(id)?'on':''}" id="addWatch" data-id="${id}">
-        ${watchIds().includes(id) ? '★ في متابعتي' : '☆ إضافة لمتابعتي'}
+      <div><button class="addbtn ${watchIds.includes(id)?'on':''}" id="addWatch" data-id="${id}"
+        data-nick="${esc(t.nickname||'')}">
+        ${watchIds.includes(id) ? '★ في متابعتي' : '☆ إضافة لمتابعتي'}
       </button></div>
       <div class="live" style="margin-top:8px"><i class="dot"></i>آخر تحديث ${fmtTime(d.fetchedAt)} · كل ٤٥ ثانية</div>
     </div>
@@ -539,34 +550,54 @@ function renderDetail(d, id){
     ${openHtml}`;
 
   const ab = $('#addWatch');
-  if(ab) ab.onclick = () => {
-    const on = toggleWatch(ab.dataset.id);
-    ab.classList.toggle('on', on);
-    ab.textContent = on ? '★ في متابعتي' : '☆ إضافة لمتابعتي';
+  if(ab) ab.onclick = async () => {
+    if(!myKey()){ showTab('watch'); return; }
+    ab.disabled = true; ab.textContent = '...';
+    try{
+      const on = await toggleWatch(ab.dataset.id, ab.dataset.nick);
+      ab.classList.toggle('on', on);
+      ab.textContent = on ? '★ في متابعتي' : '☆ إضافة لمتابعتي';
+    }catch(e){ ab.textContent = 'تعذّر الحفظ'; }
+    ab.disabled = false;
   };
 }
 
-/* ================= قائمة المتابعة ================= */
-const LS = { list:'watch_ids', snap:'watch_snap' };
-let watchTimer = null;
+/* ================= قائمة المتابعة (Supabase) ================= */
+let watchTimer = null, watchIds = [];
 
-function lsGet(k, dflt){
-  try{ return JSON.parse(localStorage.getItem(k)) ?? dflt; }catch{ return dflt; }
+function myKey(){
+  try{ return localStorage.getItem('watch_key') || ''; }catch{ return window.__k || ''; }
 }
-function lsSet(k, v){
-  try{ localStorage.setItem(k, JSON.stringify(v)); }catch{ /* وضع التصفح الخاص */ }
+function setMyKey(k){
+  try{ localStorage.setItem('watch_key', k); }catch{ window.__k = k; }
 }
-const watchIds = () => lsGet(LS.list, []);
-
-function toggleWatch(id){
-  const ids = watchIds();
-  const i = ids.indexOf(id);
-  if(i >= 0) ids.splice(i,1); else ids.push(id);
-  lsSet(LS.list, ids.slice(0,12));
-  return ids.includes(id);
+function newKey(){
+  const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from({length:6}, ()=>c[Math.floor(Math.random()*c.length)]).join('');
 }
 
-/* منحنى العائد — يكشف الشكل: تدرّج أم قفزة واحدة */
+async function watchApi(payload){
+  const key = myKey();
+  if(!key) return null;
+  const url = '/api/watch?key=' + encodeURIComponent(key);
+  const opt = payload
+    ? { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(payload) }
+    : {};
+  const res = await fetch(url, opt);
+  const text = await res.text();
+  let d;
+  try{ d = JSON.parse(text); }catch{ throw new Error('رد غير متوقع من الخادم.'); }
+  if(!res.ok) throw new Error(d.error || 'خطأ في القائمة');
+  watchIds = d.ids || [];
+  return d;
+}
+
+async function toggleWatch(id, nickname){
+  const on = !watchIds.includes(id);
+  await watchApi(on ? { add:id, nickname } : { remove:id });
+  return on;
+}
+
 function sparkline(chart){
   if(!chart || chart.length < 3) return '';
   const vs = chart.map(c=>c.v).filter(v=>v!==null);
@@ -578,50 +609,75 @@ function sparkline(chart){
     const y = H - ((v-min)/span)*(H-6) - 3;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   });
-  const rising = vs[vs.length-1] >= vs[0];
-  const color = rising ? 'var(--jade)' : 'var(--rust)';
+  const color = vs[vs.length-1] >= vs[0] ? 'var(--jade)' : 'var(--rust)';
   return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
     <polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="2"
-      stroke-linejoin="round" stroke-linecap="round"/>
-  </svg>`;
+      stroke-linejoin="round" stroke-linecap="round"/></svg>`;
 }
 
 function deltaChip(label, now, before, isMoney){
   if(!has(now) || !has(before)) return '';
   const d = now - before;
   if(Math.abs(d) < 0.01) return `<span class="delta">${label} بلا تغيّر</span>`;
-  const txt = isMoney ? fmtUsd(d) : fmtPct(d);
-  return `<span class="delta ${cls(d)}">${label} ${txt}</span>`;
+  return `<span class="delta ${cls(d)}">${label} ${isMoney?fmtUsd(d):fmtPct(d)}</span>`;
+}
+
+function keyBox(){
+  const k = myKey();
+  return `<div class="keybox">
+    <label>مفتاحك الشخصي — أدخله في أي متصفح لترى نفس القائمة</label>
+    <div class="keyrow">
+      <input id="keyInput" value="${esc(k)}" placeholder="مثال: K7M2P9" maxlength="12">
+      <button id="keySave">حفظ</button>
+      ${k ? '' : '<button id="keyGen">توليد</button>'}
+    </div>
+    <div class="keyhint">اكتبه في ملاحظاتك. من يعرفه يرى قائمتك ويعدّلها، فلا تشاركه.</div>
+  </div>`;
+}
+
+function bindKeyBox(){
+  const save = $('#keySave'), gen = $('#keyGen');
+  if(gen) gen.onclick = () => { $('#keyInput').value = newKey(); };
+  if(save) save.onclick = () => {
+    const v = $('#keyInput').value.trim().toUpperCase();
+    if(v.length < 4) return alert('المفتاح يجب أن يكون ٤ أحرف فأكثر.');
+    setMyKey(v); loadWatch();
+  };
 }
 
 async function loadWatch(){
-  const ids = watchIds();
-  if(!ids.length){
-    $('#watchMeta').textContent = 'فارغة';
-    $('#watch').innerHTML = `<div class="note">
-      لم تضف أحداً بعد. افتح أي متداول من تبويب «المتداولون» واضغط زر
-      <b>★ إضافة لمتابعتي</b> تحت اسمه.<br><br>
-      فائدة القسم: قائمة الأفضل تتغيّر أسبوعياً وتفقد من تتابعه.
-      هنا يبقى من اخترتهم ثابتين، مع منحنى عائدهم ومقدار تغيّر أرقامهم منذ آخر زيارة.</div>`;
-    return;
+  if(!myKey()){
+    $('#watchMeta').textContent = 'يحتاج مفتاحاً';
+    $('#watch').innerHTML = keyBox() + `<div class="note">
+      اضغط <b>توليد</b> ثم <b>حفظ</b> لإنشاء مفتاحك. بعدها افتح أي متداول من تبويب
+      «المتداولون» واضغط <b>☆ إضافة لمتابعتي</b>.<br><br>
+      القائمة محفوظة في قاعدة بيانات — تظهر على جوالك وحاسوبك وأي متصفح بنفس المفتاح.</div>`;
+    return bindKeyBox();
   }
 
   try{
-    const d = await getJSON('/api/watch?ids='+encodeURIComponent(ids.join(',')));
-    const snap = lsGet(LS.snap, {});
+    const d = await watchApi();
     $('#watchMeta').textContent = `${d.traders.length} متداول`;
 
-    $('#watch').innerHTML = d.traders.map(t=>{
-      const old = snap[t.id];
-      const age = daysSince(t.startTime);
-      const deltas = old ? [
-        deltaChip('العائد', t.roi, old.roi, false),
-        deltaChip('الناسخون', t.copierPnl, old.copierPnl, true),
-      ].filter(Boolean).join(' ') : '<span class="delta">أول قراءة — التغيّر يظهر لاحقاً</span>';
+    if(!d.traders.length){
+      $('#watch').innerHTML = keyBox() + `<div class="note">
+        القائمة فارغة. افتح أي متداول من تبويب «المتداولون» واضغط
+        <b>☆ إضافة لمتابعتي</b>.</div>`;
+      return bindKeyBox();
+    }
 
+    let snap = {};
+    try{ snap = JSON.parse(localStorage.getItem('watch_snap')) || {}; }catch{}
+
+    $('#watch').innerHTML = keyBox() + d.traders.map(t=>{
+      const old = snap[t.id], age = daysSince(t.startTime);
+      const deltas = old
+        ? [deltaChip('العائد', t.roi, old.roi, false),
+           deltaChip('الناسخون', t.copierPnl, old.copierPnl, true)].filter(Boolean).join(' ')
+        : '<span class="delta">أول قراءة — التغيّر يظهر لاحقاً</span>';
       return `<div class="wrow">
         <div class="w-1">
-          <span class="w-name">${esc(t.nickname||t.id)}</span>
+          <span class="w-name">${esc(t.nickname || d.savedNames?.[t.id] || t.id)}</span>
           <button class="wbtn" data-del="${t.id}">إزالة</button>
           <button class="wbtn" data-open="${t.id}">التفاصيل</button>
         </div>
@@ -635,21 +691,22 @@ async function loadWatch(){
         </div>
       </div>`;
     }).join('') + (d.missing.length
-      ? `<div class="note">تعذّر جلب ${d.missing.length} من القائمة — قد يكونوا أغلقوا محافظهم.</div>` : '');
+      ? `<div class="note">تعذّر جلب ${d.missing.length} — قد يكونوا أغلقوا محافظهم.</div>` : '');
 
-    // حفظ لقطة للمقارنة القادمة
     const next = {};
-    d.traders.forEach(t => next[t.id] = { roi:t.roi, copierPnl:t.copierPnl, ts:Date.now() });
-    lsSet(LS.snap, next);
+    d.traders.forEach(t => next[t.id] = { roi:t.roi, copierPnl:t.copierPnl });
+    try{ localStorage.setItem('watch_snap', JSON.stringify(next)); }catch{}
 
-    document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
-      toggleWatch(b.dataset.del); loadWatch();
+    bindKeyBox();
+    document.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+      b.textContent = '...'; await watchApi({ remove:b.dataset.del }); loadWatch();
     });
     document.querySelectorAll('[data-open]').forEach(b => b.onclick = () => {
       showTab('traders'); selectTrader(b.dataset.open); window.scrollTo({top:0,behavior:'smooth'});
     });
   }catch(e){
-    $('#watch').innerHTML = `<div class="error">${esc(e.message)}</div>`;
+    $('#watch').innerHTML = keyBox() + `<div class="error">${esc(e.message)}</div>`;
+    bindKeyBox();
   }
 }
 
@@ -771,6 +828,7 @@ $('#tabWatch').onclick   = () => showTab('watch');
 $('#go').onclick = search;
 $('#q').addEventListener('keydown', e => { if(e.key==='Enter') search(); });
 $('#q').addEventListener('input', e => { if(!e.target.value.trim()) loadTop(); });
+if(myKey()) watchApi().catch(()=>{});
 loadTop();
 setInterval(()=>{ if(!$('#q').value.trim()) loadTop(); }, 120000);
 </script>
