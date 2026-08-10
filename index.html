@@ -68,6 +68,25 @@
   .stat-line{display:flex; gap:14px; flex-wrap:wrap; margin-top:6px; padding-inline-start:36px;
     font-family:"IBM Plex Mono",monospace; font-size:11.5px; direction:ltr}
 
+  .wrow{padding:14px 16px; border-top:1px solid #16223455}
+  .w-1{display:flex; align-items:center; gap:9px; flex-wrap:wrap}
+  .w-name{font-weight:700; font-size:15px; flex:1; min-width:120px}
+  .wbtn{background:#16223A; border:1px solid var(--line); color:var(--muted);
+    font:inherit; font-size:11px; padding:3px 10px; border-radius:7px; cursor:pointer}
+  .wbtn:hover{color:var(--rust); border-color:#4A2119}
+  .delta{font-family:"IBM Plex Mono",monospace; font-size:11px; padding:2px 7px;
+    border-radius:5px; background:#16223A; direction:ltr}
+  .spark{margin-top:10px; width:100%; height:44px; display:block}
+  .wgrid{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--line);
+    margin-top:10px; border:1px solid var(--line); border-radius:9px; overflow:hidden}
+  @media(max-width:620px){ .wgrid{grid-template-columns:repeat(2,1fr)} }
+  .wcell{background:var(--card-2); padding:9px 11px}
+  .wcell b{display:block; font-family:"IBM Plex Mono",monospace; font-size:13.5px; direction:ltr}
+  .wcell span{font-size:10.5px; color:var(--dim)}
+  .addbtn{background:#16223A; border:1px solid var(--line); color:var(--amber);
+    font:inherit; font-size:12px; padding:5px 13px; border-radius:8px; cursor:pointer; margin-top:8px}
+  .addbtn.on{background:var(--amber); color:#15100A; border-color:var(--amber); font-weight:700}
+
   .sig{padding:13px 16px; border-top:1px solid #16223455}
   .sig-top{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
   .sig-count{font-family:"IBM Plex Mono",monospace; font-weight:700; font-size:15px;
@@ -177,6 +196,7 @@
     <div class="tabs">
       <button id="tabTraders" class="on">المتداولون</button>
       <button id="tabTrust">الأجدر بالثقة</button>
+      <button id="tabWatch">متابعتي</button>
       <button id="tabSignals">إشارات حية</button>
     </div>
     <div class="hint">
@@ -208,6 +228,16 @@
       <span class="live"><i class="dot"></i><span id="rankMeta">جارِ المسح</span></span>
     </div>
     <div id="ranked"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
+  </section>
+</div>
+
+<div class="wrap" id="watchView" style="display:none">
+  <section class="panel" style="margin-top:16px">
+    <div class="panel-head">
+      <h2>متابعتي</h2>
+      <span class="live"><i class="dot"></i><span id="watchMeta">—</span></span>
+    </div>
+    <div id="watch"></div>
   </section>
 </div>
 
@@ -480,6 +510,9 @@ function renderDetail(d, id){
         ${has(d.totalClosed)?`<span class="tag">${d.totalClosed} صفقة إجمالاً</span>`:''}
         ${has(t.profitShare)?`<span class="tag">عمولته ${fmtNum(t.profitShare,0)}% من ربحك</span>`:''}
       </div>
+      <div><button class="addbtn ${watchIds().includes(id)?'on':''}" id="addWatch" data-id="${id}">
+        ${watchIds().includes(id) ? '★ في متابعتي' : '☆ إضافة لمتابعتي'}
+      </button></div>
       <div class="live" style="margin-top:8px"><i class="dot"></i>آخر تحديث ${fmtTime(d.fetchedAt)} · كل ٤٥ ثانية</div>
     </div>
 
@@ -504,6 +537,120 @@ function renderDetail(d, id){
     ${tradesHtml}
     <div class="sec-title">مراكز مفتوحة الآن</div>
     ${openHtml}`;
+
+  const ab = $('#addWatch');
+  if(ab) ab.onclick = () => {
+    const on = toggleWatch(ab.dataset.id);
+    ab.classList.toggle('on', on);
+    ab.textContent = on ? '★ في متابعتي' : '☆ إضافة لمتابعتي';
+  };
+}
+
+/* ================= قائمة المتابعة ================= */
+const LS = { list:'watch_ids', snap:'watch_snap' };
+let watchTimer = null;
+
+function lsGet(k, dflt){
+  try{ return JSON.parse(localStorage.getItem(k)) ?? dflt; }catch{ return dflt; }
+}
+function lsSet(k, v){
+  try{ localStorage.setItem(k, JSON.stringify(v)); }catch{ /* وضع التصفح الخاص */ }
+}
+const watchIds = () => lsGet(LS.list, []);
+
+function toggleWatch(id){
+  const ids = watchIds();
+  const i = ids.indexOf(id);
+  if(i >= 0) ids.splice(i,1); else ids.push(id);
+  lsSet(LS.list, ids.slice(0,12));
+  return ids.includes(id);
+}
+
+/* منحنى العائد — يكشف الشكل: تدرّج أم قفزة واحدة */
+function sparkline(chart){
+  if(!chart || chart.length < 3) return '';
+  const vs = chart.map(c=>c.v).filter(v=>v!==null);
+  if(vs.length < 3) return '';
+  const min = Math.min(...vs), max = Math.max(...vs), span = (max-min)||1;
+  const W = 300, H = 44;
+  const pts = vs.map((v,i)=>{
+    const x = (i/(vs.length-1))*W;
+    const y = H - ((v-min)/span)*(H-6) - 3;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const rising = vs[vs.length-1] >= vs[0];
+  const color = rising ? 'var(--jade)' : 'var(--rust)';
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="2"
+      stroke-linejoin="round" stroke-linecap="round"/>
+  </svg>`;
+}
+
+function deltaChip(label, now, before, isMoney){
+  if(!has(now) || !has(before)) return '';
+  const d = now - before;
+  if(Math.abs(d) < 0.01) return `<span class="delta">${label} بلا تغيّر</span>`;
+  const txt = isMoney ? fmtUsd(d) : fmtPct(d);
+  return `<span class="delta ${cls(d)}">${label} ${txt}</span>`;
+}
+
+async function loadWatch(){
+  const ids = watchIds();
+  if(!ids.length){
+    $('#watchMeta').textContent = 'فارغة';
+    $('#watch').innerHTML = `<div class="note">
+      لم تضف أحداً بعد. افتح أي متداول من تبويب «المتداولون» واضغط زر
+      <b>★ إضافة لمتابعتي</b> تحت اسمه.<br><br>
+      فائدة القسم: قائمة الأفضل تتغيّر أسبوعياً وتفقد من تتابعه.
+      هنا يبقى من اخترتهم ثابتين، مع منحنى عائدهم ومقدار تغيّر أرقامهم منذ آخر زيارة.</div>`;
+    return;
+  }
+
+  try{
+    const d = await getJSON('/api/watch?ids='+encodeURIComponent(ids.join(',')));
+    const snap = lsGet(LS.snap, {});
+    $('#watchMeta').textContent = `${d.traders.length} متداول`;
+
+    $('#watch').innerHTML = d.traders.map(t=>{
+      const old = snap[t.id];
+      const age = daysSince(t.startTime);
+      const deltas = old ? [
+        deltaChip('العائد', t.roi, old.roi, false),
+        deltaChip('الناسخون', t.copierPnl, old.copierPnl, true),
+      ].filter(Boolean).join(' ') : '<span class="delta">أول قراءة — التغيّر يظهر لاحقاً</span>';
+
+      return `<div class="wrow">
+        <div class="w-1">
+          <span class="w-name">${esc(t.nickname||t.id)}</span>
+          <button class="wbtn" data-del="${t.id}">إزالة</button>
+          <button class="wbtn" data-open="${t.id}">التفاصيل</button>
+        </div>
+        <div style="margin-top:7px">${deltas}</div>
+        ${sparkline(t.chart)}
+        <div class="wgrid">
+          <div class="wcell"><b class="${cls(t.roi)}">${fmtPct(t.roi)}</b><span>العائد</span></div>
+          <div class="wcell"><b class="${cls(t.copierPnl)}">${fmtUsd(t.copierPnl)}</b><span>الناسخون</span></div>
+          <div class="wcell"><b>${has(t.mdd)?fmtNum(t.mdd,0)+'%':'—'}</b><span>أقصى تراجع</span></div>
+          <div class="wcell"><b>${has(age)?age:'—'}</b><span>عمر السجل</span></div>
+        </div>
+      </div>`;
+    }).join('') + (d.missing.length
+      ? `<div class="note">تعذّر جلب ${d.missing.length} من القائمة — قد يكونوا أغلقوا محافظهم.</div>` : '');
+
+    // حفظ لقطة للمقارنة القادمة
+    const next = {};
+    d.traders.forEach(t => next[t.id] = { roi:t.roi, copierPnl:t.copierPnl, ts:Date.now() });
+    lsSet(LS.snap, next);
+
+    document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
+      toggleWatch(b.dataset.del); loadWatch();
+    });
+    document.querySelectorAll('[data-open]').forEach(b => b.onclick = () => {
+      showTab('traders'); selectTrader(b.dataset.open); window.scrollTo({top:0,behavior:'smooth'});
+    });
+  }catch(e){
+    $('#watch').innerHTML = `<div class="error">${esc(e.message)}</div>`;
+  }
 }
 
 /* ================= التصنيف بالجدارة ================= */
@@ -599,14 +746,16 @@ async function loadSignals(){
 }
 
 function showTab(which){
-  const map = { traders:'tabTraders', trust:'tabTrust', signals:'tabSignals' };
+  const map = { traders:'tabTraders', trust:'tabTrust', watch:'tabWatch', signals:'tabSignals' };
   Object.entries(map).forEach(([k,id]) => $('#'+id).classList.toggle('on', k===which));
 
   document.querySelector('.grid').style.display = which==='traders' ? '' : 'none';
   $('#rankedView').style.display  = which==='trust' ? '' : 'none';
+  $('#watchView').style.display   = which==='watch' ? '' : 'none';
   $('#signalsView').style.display = which==='signals' ? '' : 'none';
 
-  clearInterval(sigTimer); clearInterval(rankTimer);
+  clearInterval(sigTimer); clearInterval(rankTimer); clearInterval(watchTimer);
+  if(which==='watch'){ loadWatch(); watchTimer = setInterval(loadWatch, 60000); }
   if(which==='signals'){ loadSignals(); sigTimer = setInterval(loadSignals, 45000); }
   if(which==='trust'){
     $('#ranked').innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
@@ -617,6 +766,7 @@ function showTab(which){
 $('#tabSignals').onclick = () => showTab('signals');
 $('#tabTraders').onclick = () => showTab('traders');
 $('#tabTrust').onclick   = () => showTab('trust');
+$('#tabWatch').onclick   = () => showTab('watch');
 
 $('#go').onclick = search;
 $('#q').addEventListener('keydown', e => { if(e.key==='Enter') search(); });
