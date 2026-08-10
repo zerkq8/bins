@@ -42,6 +42,12 @@
     font:inherit; font-size:13px; padding:7px 15px; border-radius:9px; cursor:pointer}
   .tabs button.on{background:var(--amber); color:#15100A; font-weight:700; border-color:var(--amber)}
 
+  .caution{margin:12px 16px 0; padding:11px 13px; border-radius:9px;
+    background:#241B0C; border:1px solid #453413; color:#E8C77E; font-size:12.5px; line-height:1.85}
+  .caution b{color:#FFDFA0}
+  .caution ul{margin:6px 0 0; padding-inline-start:17px}
+  .caution li{margin-bottom:2px}
+
   .crit{margin:12px 16px; padding:10px 13px; border-radius:9px; background:#16223A;
     color:var(--muted); font-size:12px; line-height:1.8}
   .crit b{color:var(--text)}
@@ -498,7 +504,17 @@ async function loadRanked(mode){
     $('#rankMeta').textContent = `${d.passedCount} اجتازوا من ${d.scanned}`;
 
     const rej = d.rejected;
-    const head = `<div class="crit">
+    const CAUTION = `<div class="caution">
+      <b>اجتياز الشروط ليس ضماناً.</b>
+      <ul>
+        <li>المعايير مبنية على الماضي، والسوق لا يكرر نفسه.</li>
+        <li>من نجح في سوق صاعد قد ينهار في هابط لم يمر به بعد.</li>
+        <li>عدد قليل من الناجحين قد يكون حظاً إحصائياً لا مهارة.</li>
+        <li>الأرقام تتغير أسبوعياً — راجعها ولا تعتمد على فحص واحد.</li>
+      </ul>
+    </div>`;
+
+    const head = CAUTION + `<div class="crit">
       <b>شروط القبول:</b> ${esc(d.criteria)}<br>
       من ${d.scanned} متداولاً: استُبعد <b>${rej.copiers}</b> لأن ناسخيهم خاسرون،
       و<b>${rej.age}</b> لقِصَر سجلهم، و<b>${rej.mdd}</b> لارتفاع تراجعهم.
@@ -527,6 +543,13 @@ async function loadRanked(mode){
         </div>
         <div class="rk-2">${t.why.map(w=>`<span class="mini">${esc(w)}</span>`).join('')}</div>
       </button>`).join('');
+
+    if(d.passedCount > 0 && d.passedCount <= 2){
+      $('#ranked').insertAdjacentHTML('beforeend', `<div class="note">
+        اجتاز ${d.passedCount} فقط من ${d.scanned}. عدد بهذه الضآلة لا يكفي للحكم —
+        قد يكون مهارة حقيقية، وقد يكون صدفة إحصائية. راقبه ثلاثة أشهر وسجّل نتائجه
+        قبل أي التزام مالي.</div>`);
+    }
 
     document.querySelectorAll('.rank-row').forEach(b => b.onclick = () => {
       showTab('traders');
