@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>مرصد المتداولين — باينس</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@500;700;800&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#101B2D; --ink-soft:#2A3A50; --muted:#6B7A8C;
+    --porcelain:#E8ECF0; --card:#FFFFFF; --line:#D6DDE5;
+    --jade:#0E7C66; --rust:#B4432F; --amber:#C08A2E;
+    --r:10px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--porcelain); color:var(--ink);
+    font-family:"IBM Plex Sans Arabic",system-ui,sans-serif;
+    font-size:15px; line-height:1.6;
+  }
+  .num{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums; direction:ltr; display:inline-block}
+  h1,h2,h3,.display{font-family:"Tajawal",sans-serif; margin:0}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 16px}
+
+  /* ---------- الهيدر ---------- */
+  header{background:var(--ink); color:#fff; padding:20px 0 22px}
+  .brand{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap}
+  .brand h1{font-size:22px; font-weight:800; letter-spacing:-.2px}
+  .brand span{color:#93A4B8; font-size:13px}
+  .searchbar{display:flex; gap:8px; margin-top:14px}
+  .searchbar input{
+    flex:1; background:#1B2942; border:1px solid #2E3F5B; color:#fff;
+    padding:11px 14px; border-radius:var(--r); font:inherit; font-size:15px;
+  }
+  .searchbar input::placeholder{color:#7D8FA6}
+  .searchbar input:focus{outline:2px solid var(--amber); outline-offset:1px}
+  .searchbar button{
+    background:var(--amber); color:#1A1408; border:0; padding:0 20px;
+    border-radius:var(--r); font:inherit; font-weight:600; cursor:pointer;
+  }
+  .searchbar button:hover{filter:brightness(1.07)}
+
+  /* ---------- التخطيط ---------- */
+  .grid{display:grid; grid-template-columns:340px 1fr; gap:18px; padding:18px 0 60px; align-items:start}
+  @media(max-width:860px){ .grid{grid-template-columns:1fr} }
+
+  .panel{background:var(--card); border:1px solid var(--line); border-radius:var(--r); overflow:hidden}
+  .panel-head{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:12px 14px; border-bottom:1px solid var(--line);
+  }
+  .panel-head h2{font-size:15px; font-weight:700}
+  .panel-head .meta{font-size:12px; color:var(--muted)}
+
+  /* ---------- قائمة المتداولين ---------- */
+  .trader-row{
+    display:grid; grid-template-columns:26px 1fr auto; gap:10px; align-items:center;
+    padding:11px 14px; border-bottom:1px solid #EEF2F5; cursor:pointer; background:none;
+    width:100%; text-align:right; font:inherit; color:inherit;
+  }
+  .trader-row:last-child{border-bottom:0}
+  .trader-row:hover{background:#F4F7FA}
+  .trader-row.active{background:#F0F4F8; box-shadow:inset 3px 0 0 var(--amber)}
+  .rank{font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--amber); font-weight:600}
+  .tname{font-weight:600; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .tsub{font-size:11.5px; color:var(--muted)}
+  .troi{font-family:"IBM Plex Mono",monospace; font-weight:600; font-size:14px; direction:ltr}
+  .up{color:var(--jade)} .down{color:var(--rust)}
+
+  /* ---------- بطاقة المتداول ---------- */
+  .hero{padding:16px 18px; border-bottom:1px solid var(--line)}
+  .hero h2{font-size:20px; font-weight:800}
+  .stats{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--line)}
+  @media(max-width:600px){ .stats{grid-template-columns:repeat(2,1fr)} }
+  .stat{background:var(--card); padding:12px 14px}
+  .stat b{display:block; font-family:"IBM Plex Mono",monospace; font-size:17px; font-weight:600; direction:ltr}
+  .stat span{font-size:11.5px; color:var(--muted)}
+
+  .sec-title{
+    display:flex; align-items:center; gap:8px; padding:14px 16px 8px;
+    font-family:"Tajawal"; font-weight:700; font-size:14px;
+  }
+  .sec-title em{font-style:normal; font-size:11.5px; color:var(--muted); font-weight:500}
+
+  /* ---------- الصفقة: العنصر المميز (شريط دورة الصفقة) ---------- */
+  .trade{padding:12px 16px; border-top:1px solid #EEF2F5}
+  .trade-top{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  .sym{font-weight:700; font-size:14px; direction:ltr}
+  .chip{
+    font-size:11px; padding:1px 7px; border-radius:4px; font-weight:600;
+    border:1px solid currentColor;
+  }
+  .chip.long{color:var(--jade)} .chip.short{color:var(--rust)}
+  .chip.lev{color:var(--muted); border-color:var(--line)}
+  .trade-roi{margin-inline-start:auto; font-family:"IBM Plex Mono",monospace; font-weight:600; direction:ltr}
+  .trade-pnl{font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--muted); direction:ltr}
+
+  .lifecycle{margin-top:9px}
+  .lc-bar{height:6px; background:#EDF1F5; border-radius:3px; position:relative; overflow:hidden}
+  .lc-fill{position:absolute; inset-inline-start:0; top:0; bottom:0; border-radius:3px}
+  .lc-fill.up{background:var(--jade)} .lc-fill.down{background:var(--rust)}
+  .lc-times{
+    display:flex; justify-content:space-between; margin-top:5px;
+    font-size:11.5px; color:var(--muted); font-family:"IBM Plex Mono",monospace; direction:ltr;
+  }
+  .lc-times .dur{color:var(--ink-soft); font-weight:500}
+
+  .empty{padding:26px 18px; color:var(--muted); font-size:14px}
+  .error{margin:0 16px 16px; padding:12px 14px; border-radius:var(--r);
+         background:#FBEDE9; border:1px solid #EFC9BF; color:#7C2D1B; font-size:13.5px}
+  .live{display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--muted)}
+  .dot{width:7px; height:7px; border-radius:50%; background:var(--jade)}
+  @media (prefers-reduced-motion:no-preference){
+    .dot{animation:pulse 2.4s ease-in-out infinite}
+  }
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  .skeleton{height:14px; background:#EDF1F5; border-radius:4px; margin:10px 16px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="brand">
+      <h1>مرصد المتداولين</h1>
+      <span>أفضل 10 متداولين على باينس + بحث بالاسم</span>
+    </div>
+    <div class="searchbar">
+      <input id="q" type="search" placeholder="اكتب اسم المتداول على باينس…" autocomplete="off">
+      <button id="go">بحث</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="grid">
+
+    <!-- القائمة -->
+    <section class="panel" id="listPanel">
+      <div class="panel-head">
+        <h2 id="listTitle">الأفضل خلال 30 يوماً</h2>
+        <span class="live"><i class="dot"></i><span id="listMeta">جارِ التحميل</span></span>
+      </div>
+      <div id="list">
+        <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+      </div>
+    </section>
+
+    <!-- التفاصيل -->
+    <section class="panel" id="detail">
+      <div class="empty">اختر متداولاً من القائمة، أو ابحث باسمه لعرض آخر ١٠ صفقات.</div>
+    </section>
+
+  </div>
+</div>
+
+<script>
+/* ---------- جلب آمن: يشرح الخطأ بدل رسالة المتصفح الغامضة ---------- */
+async function getJSON(url){
+  let res;
+  try { res = await fetch(url); }
+  catch { throw new Error('لا يوجد اتصال بالخادم. تأكد أن الموقع منشور ويعمل.'); }
+  const text = await res.text();
+  let data;
+  try { data = JSON.parse(text); }
+  catch {
+    throw new Error(res.status === 404
+      ? 'المسار ' + url + ' غير موجود (404). دوال api/ لم تُنشر — تأكد أن مجلد api موجود في المستودع وأعد النشر.'
+      : 'الخادم رجّع صفحة بدل بيانات (كود ' + res.status + '). راجع سجلات Vercel.');
+  }
+  if(!res.ok) throw new Error(data.error || ('خطأ ' + res.status));
+  return data;
+}
+
+const $ = s => document.querySelector(s);
+let currentId = null, timer = null;
+
+/* ---------- أدوات عرض ---------- */
+const fmtNum = (v, d=2) => v===null||v===undefined ? '—' :
+  Number(v).toLocaleString('en-US',{minimumFractionDigits:d, maximumFractionDigits:d});
+const sign = v => v===null ? '' : (v>0?'+':'');
+const cls  = v => v===null ? '' : (v>0?'up':v<0?'down':'');
+const fmtPct = v => v===null?'—': sign(v)+fmtNum(v,2)+'%';
+const fmtUsd = v => v===null?'—': sign(v)+'$'+fmtNum(Math.abs(v),2);
+
+function fmtTime(ms){
+  if(!ms) return '—';
+  const d = new Date(Number(ms));
+  if (isNaN(d)) return '—';
+  const p = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function fmtDur(a,b){
+  if(!a||!b||b<a) return '';
+  const m = Math.round((b-a)/60000);
+  if(m < 60) return m+' د';
+  const h = Math.floor(m/60);
+  if(h < 24) return h+' س '+(m%60?(m%60)+' د':'');
+  return Math.floor(h/24)+' ي '+(h%24?(h%24)+' س':'');
+}
+
+/* ---------- القائمة ---------- */
+async function loadTop(){
+  try{
+    const d = await getJSON('/api/top');
+    renderList(d.traders, 'الأفضل خلال 30 يوماً');
+  }catch(e){
+    $('#list').innerHTML = `<div class="error">${e.message}<br><a href="/api/debug" target="_blank" style="color:inherit">افتح صفحة التشخيص ←</a></div>`;
+    $('#listMeta').textContent = 'متوقف';
+  }
+}
+
+async function search(){
+  const q = $('#q').value.trim();
+  if(!q) return loadTop();
+  $('#list').innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
+  try{
+    const d = await getJSON('/api/search?q=' + encodeURIComponent(q));
+    if(!d.traders.length){
+      $('#listTitle').textContent = 'نتائج البحث';
+      $('#list').innerHTML = '<div class="empty">ما فيه متداول بهذا الاسم. جرّب جزءاً من الاسم فقط.</div>';
+      $('#listMeta').textContent = '0 نتيجة';
+      return;
+    }
+    renderList(d.traders, 'نتائج البحث');
+    selectTrader(d.traders[0].id);
+  }catch(e){
+    $('#list').innerHTML = `<div class="error">${e.message}</div>`;
+  }
+}
+
+function renderList(traders, title){
+  $('#listTitle').textContent = title;
+  $('#listMeta').textContent = traders.length + ' متداول';
+  $('#list').innerHTML = traders.map((t,i)=>`
+    <button class="trader-row" data-id="${t.id}">
+      <span class="rank">${String(i+1).padStart(2,'0')}</span>
+      <span>
+        <span class="tname">${escape_(t.nickname)}</span>
+        <span class="tsub">${t.winRate!==null? 'صفقات رابحة '+fmtNum(t.winRate,0)+'%' : 'متداول قائد'}${t.copiers? ' · '+t.copiers+' ناسخ':''}</span>
+      </span>
+      <span class="troi ${cls(t.roi)}">${fmtPct(t.roi)}</span>
+    </button>`).join('');
+  document.querySelectorAll('.trader-row').forEach(b=>
+    b.onclick = () => selectTrader(b.dataset.id));
+}
+
+const escape_ = s => String(s).replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+
+/* ---------- تفاصيل المتداول ---------- */
+async function selectTrader(id, quiet){
+  currentId = id;
+  document.querySelectorAll('.trader-row').forEach(b=>
+    b.classList.toggle('active', b.dataset.id === id));
+  if(!quiet) $('#detail').innerHTML = '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>';
+
+  try{
+    const d = await getJSON('/api/trader/' + encodeURIComponent(id));
+    renderDetail(d);
+  }catch(e){
+    $('#detail').innerHTML = `<div class="error">${e.message}</div>`;
+  }
+
+  clearInterval(timer);
+  timer = setInterval(()=> currentId && selectTrader(currentId, true), 45000);
+}
+
+function renderDetail(d){
+  const t = d.trader;
+  const maxDur = Math.max(1, ...d.closed.map(c => (c.closeTime && c.openTime) ? c.closeTime - c.openTime : 0));
+
+  const trades = d.closed.length ? d.closed.map(c=>{
+    const dur = (c.closeTime && c.openTime) ? c.closeTime - c.openTime : 0;
+    const w = Math.max(4, Math.round(dur / maxDur * 100));
+    const isLong = c.side.includes('LONG') || c.side === 'BUY';
+    return `
+    <div class="trade">
+      <div class="trade-top">
+        <span class="sym">${escape_(c.symbol)}</span>
+        <span class="chip ${isLong?'long':'short'}">${isLong?'شراء':'بيع'}</span>
+        ${c.leverage?`<span class="chip lev">×${c.leverage}</span>`:''}
+        <span class="trade-roi ${cls(c.roi)}">${fmtPct(c.roi)}</span>
+      </div>
+      <div class="trade-pnl">
+        ${fmtUsd(c.pnl)} &nbsp;·&nbsp; دخول ${fmtNum(c.entryPrice,4)} → خروج ${fmtNum(c.exitPrice,4)}
+      </div>
+      <div class="lifecycle">
+        <div class="lc-bar"><div class="lc-fill ${cls(c.roi)||'up'}" style="width:${w}%"></div></div>
+        <div class="lc-times">
+          <span>${fmtTime(c.openTime)}</span>
+          <span class="dur">${fmtDur(c.openTime, c.closeTime)}</span>
+          <span>${fmtTime(c.closeTime)}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('') : `<div class="empty">هذا المتداول لا يعرض سجل صفقاته المغلقة (محفظته مخفية). الإحصائيات العامة فقط متاحة.</div>`;
+
+  const open = d.open.length ? d.open.map(o=>{
+    const isLong = o.side.includes('LONG') || o.side === 'BUY';
+    return `
+    <div class="trade">
+      <div class="trade-top">
+        <span class="sym">${escape_(o.symbol)}</span>
+        <span class="chip ${isLong?'long':'short'}">${isLong?'شراء':'بيع'}</span>
+        ${o.leverage?`<span class="chip lev">×${o.leverage}</span>`:''}
+        <span class="trade-roi ${cls(o.roi)}">${fmtPct(o.roi)}</span>
+      </div>
+      <div class="trade-pnl">${fmtUsd(o.pnl)} غير محقق · دخول ${fmtNum(o.entryPrice,4)} · فُتح ${fmtTime(o.openTime)}</div>
+    </div>`;
+  }).join('') : `<div class="empty">لا توجد مراكز مفتوحة الآن.</div>`;
+
+  $('#detail').innerHTML = `
+    <div class="hero">
+      <h2>${escape_(t.nickname)}</h2>
+      <span class="live"><i class="dot"></i>آخر تحديث ${fmtTime(d.fetchedAt)} · يتحدث كل 45 ثانية</span>
+    </div>
+    <div class="stats">
+      <div class="stat"><b class="${cls(t.roi)}">${fmtPct(t.roi)}</b><span>العائد ROI</span></div>
+      <div class="stat"><b class="${cls(t.pnl)}">${fmtUsd(t.pnl)}</b><span>صافي الربح</span></div>
+      <div class="stat"><b>${t.winRate!==null?fmtNum(t.winRate,1)+'%':'—'}</b><span>نسبة الصفقات الرابحة</span></div>
+      <div class="stat"><b>${t.copiers??'—'}</b><span>عدد الناسخين</span></div>
+    </div>
+    <div class="sec-title">آخر ١٠ صفقات مغلقة <em>الشريط = مدة الصفقة من الدخول للخروج</em></div>
+    ${trades}
+    <div class="sec-title">مراكز مفتوحة الآن</div>
+    ${open}`;
+}
+
+$('#go').onclick = search;
+$('#q').addEventListener('keydown', e => { if(e.key==='Enter') search(); });
+$('#q').addEventListener('input', e => { if(!e.target.value.trim()) loadTop(); });
+loadTop();
+setInterval(()=>{ if(!$('#q').value.trim()) loadTop(); }, 120000);
+</script>
+</body>
+</html>
