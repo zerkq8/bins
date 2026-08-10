@@ -37,6 +37,20 @@
   .hint{margin-top:8px; font-size:11.5px; color:var(--dim); line-height:1.75}
   .hint code{font-family:"IBM Plex Mono",monospace; color:var(--amber); direction:ltr; display:inline-block; font-size:11px}
 
+  .tabs{display:flex; gap:7px; margin-top:12px}
+  .tabs button{background:#0C1524; border:1px solid var(--line); color:var(--muted);
+    font:inherit; font-size:13px; padding:7px 15px; border-radius:9px; cursor:pointer}
+  .tabs button.on{background:var(--amber); color:#15100A; font-weight:700; border-color:var(--amber)}
+
+  .sig{padding:13px 16px; border-top:1px solid #16223455}
+  .sig-top{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  .sig-count{font-family:"IBM Plex Mono",monospace; font-weight:700; font-size:15px;
+    background:#16223A; border-radius:7px; padding:3px 10px; direction:ltr}
+  .sig-count.hot{background:var(--amber); color:#15100A}
+  .sig-meta{font-size:11.5px; color:var(--dim); margin-top:6px; font-family:"IBM Plex Mono",monospace; direction:ltr}
+  .sig-who{font-size:11.5px; color:var(--muted); margin-top:5px; line-height:1.9}
+  .who-chip{background:#16223A; border-radius:6px; padding:2px 8px; margin-inline-end:4px; display:inline-block}
+
   .grid{display:grid; grid-template-columns:352px 1fr; gap:16px; padding:16px 0 60px; align-items:start}
   @media(max-width:900px){ .grid{grid-template-columns:1fr} }
 
@@ -129,6 +143,10 @@
       <input id="q" type="search" placeholder="اسم المتداول أو رقم معرّفه…" autocomplete="off">
       <button id="go">بحث</button>
     </div>
+    <div class="tabs">
+      <button id="tabTraders" class="on">المتداولون</button>
+      <button id="tabSignals">إشارات حية</button>
+    </div>
     <div class="hint">
       البحث بالاسم يغطي المتداولين الأعلى تصنيفاً فقط. للوصول لأي متداول:
       افتح صفحته في باينس وانسخ الرقم الطويل من نهاية الرابط والصقه هنا.<br>
@@ -148,6 +166,16 @@
 
   <section class="panel" id="detail">
     <div class="empty">اختر متداولاً لعرض تقييم المخاطر وآخر ١٠ صفقات.</div>
+  </section>
+</div>
+
+<div class="wrap" id="signalsView" style="display:none">
+  <section class="panel" style="margin-top:16px">
+    <div class="panel-head">
+      <h2>إجماع المراكز المفتوحة الآن</h2>
+      <span class="live"><i class="dot"></i><span id="sigMeta">جارِ المسح</span></span>
+    </div>
+    <div id="signals"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
   </section>
 </div>
 
@@ -423,6 +451,59 @@ function renderDetail(d, id){
     <div class="sec-title">مراكز مفتوحة الآن</div>
     ${openHtml}`;
 }
+
+/* ================= الإشارات الحية ================= */
+let sigTimer = null;
+
+async function loadSignals(){
+  try{
+    const d = await getJSON('/api/signals');
+    $('#sigMeta').textContent = `${d.visibleCount} من ${d.scanned} يعرضون مراكزهم`;
+
+    if(!d.signals.length){
+      $('#signals').innerHTML = `<div class="note">
+        لا توجد مراكز مفتوحة معروضة الآن. ${d.hiddenCount} من ${d.scanned} متداولاً يُخفون مراكزهم،
+        وهذا يعني أن أغلب ما يفعلونه لا يظهر إلا بعد الإغلاق.</div>`;
+      return;
+    }
+
+    $('#signals').innerHTML = `<div class="note">
+        ${d.visibleCount} متداولاً فقط من ${d.scanned} يعرضون مراكزهم.
+        الرقم الملوّن = كم متداولاً يحمل هذا المركز الآن في نفس الاتجاه.
+      </div>` + d.signals.map(g=>{
+      const isLong = g.side==='LONG';
+      return `<div class="sig">
+        <div class="sig-top">
+          <span class="sig-count ${g.count>=3?'hot':''}">${g.count}</span>
+          <span class="sym">${esc(g.symbol)}</span>
+          <span class="chip ${isLong?'long':'short'}">${isLong?'شراء':'بيع'}</span>
+          ${has(g.avgLev)?`<span class="chip ${g.avgLev>=10?'hi':'lev'}">×${fmtNum(g.avgLev,0)}</span>`:''}
+          ${has(g.avgRoi)?`<span class="trade-roi ${cls(g.avgRoi)}">${fmtPct(g.avgRoi)}</span>`:''}
+        </div>
+        <div class="sig-meta">
+          ${has(g.avgEntry)?`متوسط الدخول ${fmtNum(g.avgEntry,4)}`:''}
+          ${g.newest?` · آخر فتح ${fmtTime(g.newest)}`:''}
+        </div>
+        <div class="sig-who">${g.traders.map(t=>`<span class="who-chip">${esc(t.nickname)}</span>`).join('')}</div>
+      </div>`;
+    }).join('');
+  }catch(e){
+    $('#signals').innerHTML = `<div class="error">${esc(e.message)}</div>`;
+    $('#sigMeta').textContent = 'متوقف';
+  }
+}
+
+function showTab(which){
+  const sig = which==='signals';
+  $('#tabSignals').classList.toggle('on', sig);
+  $('#tabTraders').classList.toggle('on', !sig);
+  document.querySelector('.grid').style.display = sig ? 'none' : '';
+  $('#signalsView').style.display = sig ? '' : 'none';
+  clearInterval(sigTimer);
+  if(sig){ loadSignals(); sigTimer = setInterval(loadSignals, 45000); }
+}
+$('#tabSignals').onclick = () => showTab('signals');
+$('#tabTraders').onclick = () => showTab('traders');
 
 $('#go').onclick = search;
 $('#q').addEventListener('keydown', e => { if(e.key==='Enter') search(); });
