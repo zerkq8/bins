@@ -87,6 +87,13 @@
     border-bottom:1px solid var(--line); background:#0E1626}
   .userbar .who{flex:1; font-size:13px}
   .userbar .who b{font-family:"IBM Plex Mono",monospace; color:var(--amber); direction:ltr}
+  .btn-danger{background:none; color:#8A5248; border:1px solid #3A1F1A;
+    font:inherit; font-size:11.5px; padding:5px 12px; border-radius:7px; cursor:pointer}
+  .btn-danger:hover{background:#2A1512; color:#F0A997}
+  .danger-zone{margin:16px; padding:12px 14px; border-radius:9px;
+    border:1px dashed #3A1F1A; display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+  .danger-zone span{flex:1; font-size:11.5px; color:var(--dim); min-width:160px}
+
   .btn-out{background:#2A1512; color:#F0A997; border:1px solid #4A2119;
     font:inherit; font-size:12px; padding:6px 14px; border-radius:8px; cursor:pointer}
 
@@ -663,6 +670,13 @@ function userBar(){
   </div>`;
 }
 
+function dangerZone(){
+  return `<div class="danger-zone">
+    <span>حذف الحساب يمسح قائمتك نهائياً من قاعدة البيانات. مفتاحك يبقى صالحاً لبدء قائمة جديدة.</span>
+    <button class="btn-danger" id="btnPurge">حذف حسابي</button>
+  </div>`;
+}
+
 function bindAuth(){
   const inp = $('#keyInput'), bIn = $('#btnIn'), bNew = $('#btnNew'), bOut = $('#btnOut');
 
@@ -681,6 +695,27 @@ function bindAuth(){
   };
 
   if(inp) inp.addEventListener('keydown', e => { if(e.key==='Enter' && bIn) bIn.click(); });
+
+  const bPurge = $('#btnPurge');
+  if(bPurge) bPurge.onclick = async () => {
+    const k = myKey();
+    if(!confirm('حذف كل بيانات المفتاح ' + k + ' نهائياً؟\n\nلا يمكن التراجع.')) return;
+    const typed = prompt('للتأكيد، اكتب مفتاحك: ' + k);
+    if(!typed || typed.trim().toUpperCase() !== k.toUpperCase()) return alert('المفتاح غير مطابق — أُلغي الحذف.');
+    bPurge.textContent = 'جارٍ الحذف...'; bPurge.disabled = true;
+    try{
+      const d = await watchApi({ purge: true });
+      try{ localStorage.removeItem('watch_snap_'+k); }catch{}
+      watchIds = [];
+      const ab = $('#addWatch');
+      if(ab){ ab.classList.remove('on'); ab.textContent = '☆ إضافة لمتابعتي'; }
+      alert('حُذف ' + (d.deleted ?? 0) + ' متداولاً. القائمة فارغة الآن.');
+      loadWatch();
+    }catch(e){
+      alert('تعذّر الحذف: ' + e.message);
+      bPurge.textContent = 'حذف حسابي'; bPurge.disabled = false;
+    }
+  };
 
   if(bOut) bOut.onclick = () => {
     if(!confirm('تسجيل الخروج؟ ستحتاج مفتاحك للدخول مرة أخرى.')) return;
@@ -707,7 +742,7 @@ async function loadWatch(){
     if(!d.traders.length){
       $('#watch').innerHTML = userBar() + `<div class="note">
         قائمتك فارغة. افتح أي متداول من تبويب «المتداولون» واضغط
-        <b>☆ إضافة لمتابعتي</b>.</div>`;
+        <b>☆ إضافة لمتابعتي</b>.</div>` + dangerZone();
       return bindAuth();
     }
 
@@ -736,7 +771,8 @@ async function loadWatch(){
         </div>
       </div>`;
     }).join('') + (d.missing.length
-      ? `<div class="note">تعذّر جلب ${d.missing.length} — قد يكونوا أغلقوا محافظهم.</div>` : '');
+      ? `<div class="note">تعذّر جلب ${d.missing.length} — قد يكونوا أغلقوا محافظهم.</div>` : '')
+      + dangerZone();
 
     const next = {};
     d.traders.forEach(t => next[t.id] = { roi:t.roi, copierPnl:t.copierPnl });
