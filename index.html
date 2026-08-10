@@ -68,6 +68,28 @@
   .stat-line{display:flex; gap:14px; flex-wrap:wrap; margin-top:6px; padding-inline-start:36px;
     font-family:"IBM Plex Mono",monospace; font-size:11.5px; direction:ltr}
 
+  .login{margin:16px; padding:22px 20px; border-radius:12px; background:#0E1626;
+    border:1px solid var(--line); text-align:center}
+  .login h3{font-family:"Tajawal"; font-size:17px; font-weight:800; margin-bottom:6px}
+  .login p{font-size:12.5px; color:var(--dim); margin:0 0 16px; line-height:1.8}
+  .login input{width:100%; max-width:260px; background:#0C1524; border:1px solid var(--line);
+    color:var(--text); padding:12px 14px; border-radius:9px; font:inherit; font-size:16px;
+    font-family:"IBM Plex Mono",monospace; direction:ltr; text-align:center; letter-spacing:2px;
+    text-transform:uppercase}
+  .login input:focus{outline:none; border-color:var(--amber)}
+  .login .btns{display:flex; gap:8px; justify-content:center; margin-top:12px; flex-wrap:wrap}
+  .login button{border:0; padding:11px 22px; border-radius:9px; font:inherit;
+    font-weight:700; font-size:14px; cursor:pointer}
+  .btn-in{background:var(--amber); color:#15100A}
+  .btn-new{background:#16223A; color:var(--muted); border:1px solid var(--line)}
+
+  .userbar{display:flex; align-items:center; gap:10px; padding:11px 16px;
+    border-bottom:1px solid var(--line); background:#0E1626}
+  .userbar .who{flex:1; font-size:13px}
+  .userbar .who b{font-family:"IBM Plex Mono",monospace; color:var(--amber); direction:ltr}
+  .btn-out{background:#2A1512; color:#F0A997; border:1px solid #4A2119;
+    font:inherit; font-size:12px; padding:6px 14px; border-radius:8px; cursor:pointer}
+
   .keybox{margin:12px 16px; padding:12px 14px; border-radius:10px; background:#16223A}
   .keybox label{display:block; font-size:12px; color:var(--muted); margin-bottom:7px}
   .keyrow{display:flex; gap:7px}
@@ -551,7 +573,7 @@ function renderDetail(d, id){
 
   const ab = $('#addWatch');
   if(ab) ab.onclick = async () => {
-    if(!myKey()){ showTab('watch'); return; }
+    if(!myKey()){ showTab('watch'); window.scrollTo({top:0,behavior:'smooth'}); return; }
     ab.disabled = true; ab.textContent = '...';
     try{
       const on = await toggleWatch(ab.dataset.id, ab.dataset.nick);
@@ -622,37 +644,60 @@ function deltaChip(label, now, before, isMoney){
   return `<span class="delta ${cls(d)}">${label} ${isMoney?fmtUsd(d):fmtPct(d)}</span>`;
 }
 
-function keyBox(){
-  const k = myKey();
-  return `<div class="keybox">
-    <label>مفتاحك الشخصي — أدخله في أي متصفح لترى نفس القائمة</label>
-    <div class="keyrow">
-      <input id="keyInput" value="${esc(k)}" placeholder="مثال: K7M2P9" maxlength="12">
-      <button id="keySave">حفظ</button>
-      ${k ? '' : '<button id="keyGen">توليد</button>'}
+function loginScreen(msg){
+  return `<div class="login">
+    <h3>الدخول لقائمتك</h3>
+    <p>${msg || 'لكل شخص مفتاحه الخاص وقائمته المستقلة.<br>أدخل مفتاحك، أو أنشئ واحداً جديداً إن كانت أول مرة.'}</p>
+    <input id="keyInput" placeholder="ABC123" maxlength="12" autocomplete="off">
+    <div class="btns">
+      <button class="btn-in" id="btnIn">دخول</button>
+      <button class="btn-new" id="btnNew">مفتاح جديد</button>
     </div>
-    <div class="keyhint">اكتبه في ملاحظاتك. من يعرفه يرى قائمتك ويعدّلها، فلا تشاركه.</div>
   </div>`;
 }
 
-function bindKeyBox(){
-  const save = $('#keySave'), gen = $('#keyGen');
-  if(gen) gen.onclick = () => { $('#keyInput').value = newKey(); };
-  if(save) save.onclick = () => {
-    const v = $('#keyInput').value.trim().toUpperCase();
+function userBar(){
+  return `<div class="userbar">
+    <span class="who">قائمة <b>${esc(myKey())}</b></span>
+    <button class="btn-out" id="btnOut">خروج</button>
+  </div>`;
+}
+
+function bindAuth(){
+  const inp = $('#keyInput'), bIn = $('#btnIn'), bNew = $('#btnNew'), bOut = $('#btnOut');
+
+  if(bNew) bNew.onclick = () => {
+    const k = newKey();
+    inp.value = k;
+    alert('مفتاحك الجديد: ' + k + '\n\nاكتبه في مكان آمن — بدونه لن تصل لقائمتك.');
+  };
+
+  if(bIn) bIn.onclick = () => {
+    const v = (inp.value || '').trim().toUpperCase();
     if(v.length < 4) return alert('المفتاح يجب أن يكون ٤ أحرف فأكثر.');
-    setMyKey(v); loadWatch();
+    setMyKey(v);
+    $('#watch').innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
+    loadWatch();
+  };
+
+  if(inp) inp.addEventListener('keydown', e => { if(e.key==='Enter' && bIn) bIn.click(); });
+
+  if(bOut) bOut.onclick = () => {
+    if(!confirm('تسجيل الخروج؟ ستحتاج مفتاحك للدخول مرة أخرى.')) return;
+    setMyKey('');
+    watchIds = [];
+    try{ localStorage.removeItem('watch_snap'); }catch{}
+    const ab = $('#addWatch');
+    if(ab){ ab.classList.remove('on'); ab.textContent = '☆ إضافة لمتابعتي'; }
+    loadWatch();
   };
 }
 
 async function loadWatch(){
   if(!myKey()){
-    $('#watchMeta').textContent = 'يحتاج مفتاحاً';
-    $('#watch').innerHTML = keyBox() + `<div class="note">
-      اضغط <b>توليد</b> ثم <b>حفظ</b> لإنشاء مفتاحك. بعدها افتح أي متداول من تبويب
-      «المتداولون» واضغط <b>☆ إضافة لمتابعتي</b>.<br><br>
-      القائمة محفوظة في قاعدة بيانات — تظهر على جوالك وحاسوبك وأي متصفح بنفس المفتاح.</div>`;
-    return bindKeyBox();
+    $('#watchMeta').textContent = 'غير مسجّل';
+    $('#watch').innerHTML = loginScreen();
+    return bindAuth();
   }
 
   try{
@@ -660,16 +705,16 @@ async function loadWatch(){
     $('#watchMeta').textContent = `${d.traders.length} متداول`;
 
     if(!d.traders.length){
-      $('#watch').innerHTML = keyBox() + `<div class="note">
-        القائمة فارغة. افتح أي متداول من تبويب «المتداولون» واضغط
+      $('#watch').innerHTML = userBar() + `<div class="note">
+        قائمتك فارغة. افتح أي متداول من تبويب «المتداولون» واضغط
         <b>☆ إضافة لمتابعتي</b>.</div>`;
-      return bindKeyBox();
+      return bindAuth();
     }
 
     let snap = {};
-    try{ snap = JSON.parse(localStorage.getItem('watch_snap')) || {}; }catch{}
+    try{ snap = JSON.parse(localStorage.getItem('watch_snap_'+myKey())) || {}; }catch{}
 
-    $('#watch').innerHTML = keyBox() + d.traders.map(t=>{
+    $('#watch').innerHTML = userBar() + d.traders.map(t=>{
       const old = snap[t.id], age = daysSince(t.startTime);
       const deltas = old
         ? [deltaChip('العائد', t.roi, old.roi, false),
@@ -695,9 +740,9 @@ async function loadWatch(){
 
     const next = {};
     d.traders.forEach(t => next[t.id] = { roi:t.roi, copierPnl:t.copierPnl });
-    try{ localStorage.setItem('watch_snap', JSON.stringify(next)); }catch{}
+    try{ localStorage.setItem('watch_snap_'+myKey(), JSON.stringify(next)); }catch{}
 
-    bindKeyBox();
+    bindAuth();
     document.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
       b.textContent = '...'; await watchApi({ remove:b.dataset.del }); loadWatch();
     });
@@ -705,8 +750,8 @@ async function loadWatch(){
       showTab('traders'); selectTrader(b.dataset.open); window.scrollTo({top:0,behavior:'smooth'});
     });
   }catch(e){
-    $('#watch').innerHTML = keyBox() + `<div class="error">${esc(e.message)}</div>`;
-    bindKeyBox();
+    $('#watch').innerHTML = loginScreen('تعذّر تحميل القائمة: ' + esc(e.message));
+    bindAuth();
   }
 }
 
