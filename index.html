@@ -58,7 +58,8 @@
   .medal{font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--amber); font-weight:700}
   .score{font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--dim);
     background:#16223A; border-radius:6px; padding:2px 8px; direction:ltr}
-  .flags{display:flex; gap:5px; flex-wrap:wrap; margin-top:7px; padding-inline-start:36px}
+  .flags{display:flex; gap:5px; flex-wrap:wrap; margin-top:6px; padding-inline-start:31px}
+  .rank-row .flags{padding-inline-start:36px}
   .flag{font-size:10.5px; padding:2px 8px; border-radius:5px; background:#2A1512; color:#F0A997}
   .flag::before{content:"! "; font-weight:700}
   .clean{font-size:10.5px; padding:2px 8px; border-radius:5px; background:#10261F; color:#7FD9BF}
@@ -176,7 +177,6 @@
     <div class="tabs">
       <button id="tabTraders" class="on">المتداولون</button>
       <button id="tabTrust">الأجدر بالثقة</button>
-      <button id="tabSuccess">الناجحون</button>
       <button id="tabSignals">إشارات حية</button>
     </div>
     <div class="hint">
@@ -333,6 +333,14 @@ function renderList(traders, title){
         ${has(t.winRate)?`<span class="mini">رابحة <b>${fmtNum(t.winRate,0)}%</b></span>`:''}
         ${has(age)?`<span class="mini ${age<90?'bad':''}"><b>${age}</b> يوم</span>`:''}
       </div>
+      ${(()=>{ const f=[];
+        if(copierBad) f.push('الناسخون خاسرون');
+        if(has(age)&&age<90) f.push('سجل قصير');
+        if(has(t.mdd)&&t.mdd>40) f.push('تراجع مرتفع');
+        return f.length
+          ? `<div class="flags">${f.map(x=>`<span class="flag">${x}</span>`).join('')}</div>`
+          : `<div class="flags"><span class="clean">✓ بلا علامات خطر</span></div>`;
+      })()}
     </button>`;
   }).join('');
   document.querySelectorAll('.trader-row').forEach(b => b.onclick = () => selectTrader(b.dataset.id));
@@ -501,36 +509,17 @@ function renderDetail(d, id){
 /* ================= التصنيف بالجدارة ================= */
 let rankTimer = null, rankMode = 'trust';
 
-async function loadRanked(mode){
-  rankMode = mode;
-  $('#rankTitle').textContent = mode==='trust' ? 'الأجدر بالثقة' : 'المتداولون الناجحون';
+async function loadRanked(){
   try{
-    const d = await getJSON('/api/ranked?mode='+mode);
+    const d = await getJSON('/api/ranked');
     $('#rankMeta').textContent = `${d.passedCount} اجتازوا من ${d.scanned}`;
 
     const rej = d.rejected;
-    const CAUTION = `<div class="caution">
-      <b>اجتياز الشروط ليس ضماناً.</b>
-      <ul>
-        <li>المعايير مبنية على الماضي، والسوق لا يكرر نفسه.</li>
-        <li>من نجح في سوق صاعد قد ينهار في هابط لم يمر به بعد.</li>
-        <li>عدد قليل من الناجحين قد يكون حظاً إحصائياً لا مهارة.</li>
-        <li>الأرقام تتغير أسبوعياً — راجعها ولا تعتمد على فحص واحد.</li>
-      </ul>
+    const head = `<div class="crit">
+      <b>شروط القبول:</b> ${esc(d.criteria)}<br>
+      من ${d.scanned} متداولاً: استُبعد <b>${rej.copiers}</b> لأن ناسخيهم خاسرون،
+      و<b>${rej.age}</b> لقِصَر سجلهم، و<b>${rej.mdd}</b> لارتفاع تراجعهم.
     </div>`;
-
-    const head = CAUTION + (mode==='success'
-      ? `<div class="crit">
-          <b>الترتيب بأعلى عائد خام</b> — بلا استبعاد، كما تعرضه باينس.<br>
-          من ${d.scanned} متداولاً: <b>${d.flaggedCount}</b> عليهم علامة خطر واحدة على الأقل،
-          و<b>${d.cleanCount}</b> بلا علامات. العلامات الحمراء تحت كل اسم — اقرأها قبل الرقم.
-        </div>`
-      : `<div class="crit">
-          <b>شروط القبول:</b> ${esc(d.criteria)}<br>
-          من ${d.scanned} متداولاً: استُبعد <b>${rej.copiers}</b> لأن ناسخيهم خاسرون،
-          و<b>${rej.age}</b> لقِصَر سجلهم، و<b>${rej.mdd}</b> لارتفاع تراجعهم.
-          الترتيب بالأمان لا بالعائد.
-        </div>`);
 
     if(!d.traders.length){
       $('#ranked').innerHTML = head + `<div class="note">
@@ -556,13 +545,6 @@ async function loadRanked(mode){
           ? `<div class="flags">${t.flags.map(f=>`<span class="flag">${esc(f)}</span>`).join('')}</div>`
           : `<div class="flags"><span class="clean">✓ بلا علامات خطر</span></div>`}
       </button>`).join('');
-
-    if(mode==='trust' && d.passedCount > 0 && d.passedCount <= 2){
-      $('#ranked').insertAdjacentHTML('beforeend', `<div class="note">
-        اجتاز ${d.passedCount} فقط من ${d.scanned}. عدد بهذه الضآلة لا يكفي للحكم —
-        قد يكون مهارة حقيقية، وقد يكون صدفة إحصائية. راقبه ثلاثة أشهر وسجّل نتائجه
-        قبل أي التزام مالي.</div>`);
-    }
 
     document.querySelectorAll('.rank-row').forEach(b => b.onclick = () => {
       showTab('traders');
@@ -617,25 +599,24 @@ async function loadSignals(){
 }
 
 function showTab(which){
-  const map = { traders:'tabTraders', trust:'tabTrust', success:'tabSuccess', signals:'tabSignals' };
+  const map = { traders:'tabTraders', trust:'tabTrust', signals:'tabSignals' };
   Object.entries(map).forEach(([k,id]) => $('#'+id).classList.toggle('on', k===which));
 
   document.querySelector('.grid').style.display = which==='traders' ? '' : 'none';
-  $('#rankedView').style.display  = (which==='trust'||which==='success') ? '' : 'none';
+  $('#rankedView').style.display  = which==='trust' ? '' : 'none';
   $('#signalsView').style.display = which==='signals' ? '' : 'none';
 
   clearInterval(sigTimer); clearInterval(rankTimer);
   if(which==='signals'){ loadSignals(); sigTimer = setInterval(loadSignals, 45000); }
-  if(which==='trust' || which==='success'){
+  if(which==='trust'){
     $('#ranked').innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
-    loadRanked(which);
-    rankTimer = setInterval(()=>loadRanked(which), 120000);
+    loadRanked();
+    rankTimer = setInterval(loadRanked, 120000);
   }
 }
 $('#tabSignals').onclick = () => showTab('signals');
 $('#tabTraders').onclick = () => showTab('traders');
 $('#tabTrust').onclick   = () => showTab('trust');
-$('#tabSuccess').onclick = () => showTab('success');
 
 $('#go').onclick = search;
 $('#q').addEventListener('keydown', e => { if(e.key==='Enter') search(); });
