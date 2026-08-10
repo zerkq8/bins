@@ -46,6 +46,9 @@
   }
   .searchbar button:active{filter:brightness(.9)}
 
+  .hint{margin-top:8px; font-size:11.5px; color:var(--dim); line-height:1.75}
+  .hint code{font-family:"IBM Plex Mono",monospace; color:var(--amber); direction:ltr; display:inline-block; font-size:11px}
+
   .grid{display:grid; grid-template-columns:330px 1fr; gap:16px; padding:16px 0 60px; align-items:start}
   @media(max-width:880px){ .grid{grid-template-columns:1fr} }
 
@@ -118,6 +121,11 @@
       <input id="q" type="search" placeholder="اكتب اسم المتداول…" autocomplete="off">
       <button id="go">بحث</button>
     </div>
+    <div class="hint">
+      البحث بالاسم يغطي المتداولين الأعلى تصنيفاً فقط. للوصول لأي متداول:
+      افتح صفحته في باينس وانسخ الرقم الطويل من نهاية الرابط، والصقه هنا بدل الاسم.<br>
+      <code>binance.com/copy-trading/lead-details/<b>5140150771820754432</b></code>
+    </div>
   </div>
 </header>
 
@@ -189,6 +197,18 @@ async function loadTop(){
 async function search(){
   const q = $('#q').value.trim();
   if(!q) return loadTop();
+
+  // رقم طويل = معرّف متداول، نفتحه مباشرة
+  if(/^\d{8,}$/.test(q)){
+    $('#listTitle').textContent = 'متداول محدد';
+    $('#listMeta').textContent = 'بالمعرّف';
+    $('#list').innerHTML = `<button class="trader-row active" data-id="${q}">
+        <span class="rank">ID</span>
+        <span><span class="tname">${esc(q)}</span><span class="tsub">تم الفتح بالمعرّف</span></span>
+        <span class="troi"></span></button>`;
+    return selectTrader(q);
+  }
+
   $('#list').innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
   $('#listMeta').textContent = 'جارِ البحث';
   try{
