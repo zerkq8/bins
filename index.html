@@ -17,40 +17,28 @@
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
-  body{
-    background:var(--bg); color:var(--text);
+  body{background:var(--bg); color:var(--text);
     font-family:"IBM Plex Sans Arabic",system-ui,sans-serif; font-size:15px; line-height:1.6;
-    -webkit-font-smoothing:antialiased;
-  }
+    -webkit-font-smoothing:antialiased}
   h1,h2,h3{font-family:"Tajawal",sans-serif; margin:0}
   .wrap{max-width:1180px;margin:0 auto;padding:0 14px}
-  a{color:var(--amber)}
 
-  header{
-    background:linear-gradient(180deg,#0E1727,#0A0F1A);
-    border-bottom:1px solid var(--line); padding:18px 0 20px;
-  }
+  header{background:linear-gradient(180deg,#0E1727,#0A0F1A); border-bottom:1px solid var(--line); padding:18px 0 20px}
   .brand{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap}
   .brand h1{font-size:21px; font-weight:800}
   .brand span{color:var(--dim); font-size:12.5px}
   .searchbar{display:flex; gap:8px; margin-top:13px}
-  .searchbar input{
-    flex:1; background:#0C1524; border:1px solid var(--line); color:var(--text);
-    padding:11px 14px; border-radius:var(--r); font:inherit; font-size:15px;
-  }
+  .searchbar input{flex:1; background:#0C1524; border:1px solid var(--line); color:var(--text);
+    padding:11px 14px; border-radius:var(--r); font:inherit; font-size:15px}
   .searchbar input::placeholder{color:var(--dim)}
   .searchbar input:focus{outline:none; border-color:var(--amber)}
-  .searchbar button{
-    background:var(--amber); color:#15100A; border:0; padding:0 22px;
-    border-radius:var(--r); font:inherit; font-weight:700; cursor:pointer;
-  }
-  .searchbar button:active{filter:brightness(.9)}
-
+  .searchbar button{background:var(--amber); color:#15100A; border:0; padding:0 22px;
+    border-radius:var(--r); font:inherit; font-weight:700; cursor:pointer}
   .hint{margin-top:8px; font-size:11.5px; color:var(--dim); line-height:1.75}
   .hint code{font-family:"IBM Plex Mono",monospace; color:var(--amber); direction:ltr; display:inline-block; font-size:11px}
 
-  .grid{display:grid; grid-template-columns:330px 1fr; gap:16px; padding:16px 0 60px; align-items:start}
-  @media(max-width:880px){ .grid{grid-template-columns:1fr} }
+  .grid{display:grid; grid-template-columns:352px 1fr; gap:16px; padding:16px 0 60px; align-items:start}
+  @media(max-width:900px){ .grid{grid-template-columns:1fr} }
 
   .panel{background:var(--card); border:1px solid var(--line); border-radius:var(--r); overflow:hidden}
   .panel-head{display:flex; justify-content:space-between; align-items:center; padding:12px 14px; border-bottom:1px solid var(--line)}
@@ -60,22 +48,25 @@
   @media (prefers-reduced-motion:no-preference){ .dot{animation:p 2.4s ease-in-out infinite} }
   @keyframes p{0%,100%{opacity:1}50%{opacity:.2}}
 
-  .num{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums; direction:ltr}
-  .up{color:var(--jade)} .down{color:var(--rust)}
+  .up{color:var(--jade)} .down{color:var(--rust)} .warn{color:var(--amber)}
+  .mono{font-family:"IBM Plex Mono",monospace; direction:ltr; font-variant-numeric:tabular-nums}
 
-  .trader-row{
-    display:grid; grid-template-columns:24px 1fr auto; gap:9px; align-items:center;
-    padding:11px 13px; border-bottom:1px solid #16223444; cursor:pointer;
-    background:none; width:100%; text-align:right; font:inherit; color:inherit;
-  }
-  .trader-row:last-child{border-bottom:0}
+  /* ------- صفوف القائمة ------- */
+  .trader-row{display:block; width:100%; text-align:right; font:inherit; color:inherit;
+    background:none; border:0; border-bottom:1px solid #16223444; padding:11px 13px; cursor:pointer}
   .trader-row:hover{background:#16223A}
   .trader-row.active{background:#16223A; box-shadow:inset 3px 0 0 var(--amber)}
+  .tr-1{display:grid; grid-template-columns:22px 1fr auto; gap:9px; align-items:center}
   .rank{font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--amber)}
-  .tname{font-weight:600; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-  .tsub{font-size:11px; color:var(--dim)}
+  .tname{font-weight:600; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block}
   .troi{font-family:"IBM Plex Mono",monospace; font-weight:600; font-size:13.5px; direction:ltr}
+  .tr-2{display:flex; gap:5px; flex-wrap:wrap; margin:6px 0 0 0; padding-inline-start:31px}
+  .mini{font-size:10.5px; padding:1px 7px; border-radius:5px; background:#16223A; color:var(--muted)}
+  .mini b{font-family:"IBM Plex Mono",monospace; font-weight:600}
+  .mini.bad{background:#2A1512; color:#F0A997}
+  .mini.good{background:#10261F; color:#7FD9BF}
 
+  /* ------- التفاصيل ------- */
   .hero{padding:15px 17px; border-bottom:1px solid var(--line)}
   .hero h2{font-size:19px; font-weight:800}
   .tags{display:flex; gap:6px; flex-wrap:wrap; margin-top:7px}
@@ -89,14 +80,30 @@
   .sec-title{display:flex; align-items:baseline; gap:8px; padding:15px 16px 6px; font-family:"Tajawal"; font-weight:700; font-size:14px}
   .sec-title em{font-style:normal; font-size:11px; color:var(--dim); font-weight:500}
 
+  /* ------- لوحة المخاطر ------- */
+  .risk{margin:0 16px 4px; border:1px solid var(--line); border-radius:10px; overflow:hidden}
+  .risk-row{display:flex; gap:9px; align-items:flex-start; padding:9px 12px; border-bottom:1px solid #16223455; font-size:12.5px}
+  .risk-row:last-child{border-bottom:0}
+  .risk-ico{flex:none; width:17px; height:17px; border-radius:50%; display:grid; place-items:center;
+    font-size:10.5px; font-weight:700; margin-top:2px}
+  .ico-bad{background:#3A1B16; color:#F0A997} .ico-warn{background:#332608; color:var(--amber)}
+  .ico-ok{background:#10261F; color:#7FD9BF}
+  .risk-row .why{color:var(--dim); font-size:11.5px; display:block}
+  .facts{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--line); margin:10px 16px 0; border:1px solid var(--line); border-radius:10px; overflow:hidden}
+  @media(max-width:620px){ .facts{grid-template-columns:repeat(2,1fr)} }
+  .fact{background:var(--card-2); padding:10px 12px}
+  .fact b{display:block; font-family:"IBM Plex Mono",monospace; font-size:14px; direction:ltr}
+  .fact span{font-size:10.5px; color:var(--dim)}
+
+  /* ------- الصفقات ------- */
   .trade{padding:12px 16px; border-top:1px solid #16223455}
   .trade-top{display:flex; align-items:center; gap:7px; flex-wrap:wrap}
   .sym{font-weight:700; font-size:14px; direction:ltr; font-family:"IBM Plex Mono",monospace}
   .chip{font-size:10.5px; padding:1px 7px; border-radius:4px; font-weight:600; border:1px solid currentColor}
   .chip.long{color:var(--jade)} .chip.short{color:var(--rust)} .chip.lev{color:var(--dim)}
+  .chip.hi{color:var(--amber)}
   .trade-roi{margin-inline-start:auto; font-family:"IBM Plex Mono",monospace; font-weight:600; direction:ltr; font-size:14px}
   .trade-pnl{font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--muted); direction:ltr; margin-top:3px}
-
   .lc-bar{height:5px; background:#16223A; border-radius:3px; position:relative; overflow:hidden; margin-top:9px}
   .lc-fill{position:absolute; inset-inline-start:0; top:0; bottom:0; border-radius:3px}
   .lc-fill.up{background:var(--jade)} .lc-fill.down{background:var(--rust)}
@@ -104,9 +111,10 @@
   .lc-times .dur{color:var(--muted)}
 
   .empty{padding:24px 18px; color:var(--muted); font-size:14px}
-  .note{margin:12px 16px 0; padding:10px 13px; border-radius:8px; background:#16223A; color:var(--muted); font-size:12.5px}
+  .note{margin:12px 16px; padding:10px 13px; border-radius:8px; background:#16223A; color:var(--muted); font-size:12.5px}
   .error{margin:14px; padding:12px 14px; border-radius:8px; background:#2A1512; border:1px solid #4A2119; color:#F0A997; font-size:13.5px}
   .skeleton{height:13px; background:#16223A; border-radius:4px; margin:11px 16px}
+  footer{padding:0 0 40px; color:var(--dim); font-size:11.5px; line-height:1.8}
 </style>
 </head>
 <body>
@@ -115,15 +123,15 @@
   <div class="wrap">
     <div class="brand">
       <h1>مرصد المتداولين</h1>
-      <span>أفضل ١٠ متداولين على باينس + بحث بالاسم</span>
+      <span>تقييم المتداولين قبل نسخهم — لا مجرد عرض أرباحهم</span>
     </div>
     <div class="searchbar">
-      <input id="q" type="search" placeholder="اكتب اسم المتداول…" autocomplete="off">
+      <input id="q" type="search" placeholder="اسم المتداول أو رقم معرّفه…" autocomplete="off">
       <button id="go">بحث</button>
     </div>
     <div class="hint">
       البحث بالاسم يغطي المتداولين الأعلى تصنيفاً فقط. للوصول لأي متداول:
-      افتح صفحته في باينس وانسخ الرقم الطويل من نهاية الرابط، والصقه هنا بدل الاسم.<br>
+      افتح صفحته في باينس وانسخ الرقم الطويل من نهاية الرابط والصقه هنا.<br>
       <code>binance.com/copy-trading/lead-details/<b>5140150771820754432</b></code>
     </div>
   </div>
@@ -139,36 +147,41 @@
   </section>
 
   <section class="panel" id="detail">
-    <div class="empty">اختر متداولاً من القائمة لعرض آخر ١٠ صفقات.</div>
+    <div class="empty">اختر متداولاً لعرض تقييم المخاطر وآخر ١٠ صفقات.</div>
   </section>
-</div></div>
+</div>
+
+<footer class="wrap">
+  الأرقام المعروضة نتائج ماضية ولا تضمن تكرارها. أعلى عائد لا يعني أفضل متداول —
+  انظر لربح الناسخين وأقصى التراجع ومدة النشاط قبل أي رقم آخر.
+</footer>
+</div>
 
 <script>
 const $ = s => document.querySelector(s);
 let currentId = null, timer = null;
-const cacheRows = {};   // بيانات القائمة (فيها ROI ونسبة الربح)
+const cacheRows = {};
 
 async function getJSON(url){
   let res;
-  try{ res = await fetch(url); }
-  catch{ throw new Error('لا يوجد اتصال بالخادم.'); }
+  try{ res = await fetch(url); } catch{ throw new Error('لا يوجد اتصال بالخادم.'); }
   const text = await res.text();
   let data;
   try{ data = JSON.parse(text); }
-  catch{ throw new Error(res.status===404
-    ? 'المسار '+url+' غير موجود. تأكد أن مجلد api منشور.'
-    : 'الخادم رجّع صفحة بدل بيانات (كود '+res.status+').'); }
+  catch{ throw new Error(res.status===404 ? 'المسار غير موجود. تأكد أن مجلد api منشور.'
+                                          : 'الخادم رجّع صفحة بدل بيانات (كود '+res.status+').'); }
   if(!res.ok) throw new Error(data.error || ('خطأ '+res.status));
   return data;
 }
 
 const esc = s => String(s??'').replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
-const has = v => v!==null && v!==undefined;
+const has = v => v!==null && v!==undefined && !Number.isNaN(v);
 const fmtNum = (v,d=2) => !has(v)?'—':Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
 const cls = v => !has(v)?'':(v>0?'up':v<0?'down':'');
 const fmtPct = v => !has(v)?'—':(v>0?'+':v<0?'−':'')+fmtNum(Math.abs(v),2)+'%';
 const fmtUsd = v => !has(v)?'—':(v>0?'+':v<0?'−':'')+'$'+fmtNum(Math.abs(v),2);
 const fmtBig = v => !has(v)?'—':'$'+Number(v).toLocaleString('en-US',{maximumFractionDigits:0});
+const daysSince = ms => !ms ? null : Math.floor((Date.now()-Number(ms))/86400000);
 
 function fmtTime(ms){
   if(!ms) return '—';
@@ -184,8 +197,17 @@ function fmtDur(a,b){
   if(h<24) return h+' س'+(m%60?' '+(m%60)+' د':'');
   return Math.floor(h/24)+' ي'+(h%24?' '+(h%24)+' س':'');
 }
+function fmtSpan(ms){          // تنسيق مدة مجردة (لا تعتمد على وقتَي بداية ونهاية)
+  if(!has(ms) || ms<=0) return '—';
+  const m = Math.round(ms/60000);
+  if(m<60) return m+' د';
+  const h = Math.floor(m/60);
+  if(h<24) return h+' س'+(m%60?' '+(m%60)+' د':'');
+  return Math.floor(h/24)+' ي'+(h%24?' '+(h%24)+' س':'');
+}
+const avg = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : null;
 
-/* ---------- القائمة ---------- */
+/* ================= القائمة ================= */
 async function loadTop(){
   try{ renderList((await getJSON('/api/top')).traders, 'الأفضل خلال ٣٠ يوماً'); }
   catch(e){
@@ -198,14 +220,12 @@ async function search(){
   const q = $('#q').value.trim();
   if(!q) return loadTop();
 
-  // رقم طويل = معرّف متداول، نفتحه مباشرة
-  if(/^\d{8,}$/.test(q)){
+  if(/^\d{8,}$/.test(q)){          // رقم معرّف
     $('#listTitle').textContent = 'متداول محدد';
     $('#listMeta').textContent = 'بالمعرّف';
-    $('#list').innerHTML = `<button class="trader-row active" data-id="${q}">
-        <span class="rank">ID</span>
-        <span><span class="tname">${esc(q)}</span><span class="tsub">تم الفتح بالمعرّف</span></span>
-        <span class="troi"></span></button>`;
+    $('#list').innerHTML = `<button class="trader-row active" data-id="${esc(q)}">
+      <div class="tr-1"><span class="rank">ID</span>
+        <span class="tname">${esc(q)}</span><span class="troi"></span></div></button>`;
     return selectTrader(q);
   }
 
@@ -216,7 +236,7 @@ async function search(){
     if(!d.traders.length){
       $('#listTitle').textContent = 'نتائج البحث';
       $('#listMeta').textContent = '٠';
-      $('#list').innerHTML = '<div class="empty">لم يُعثر على هذا الاسم ضمن المتداولين الأعلى تصنيفاً. جرّب جزءاً من الاسم.</div>';
+      $('#list').innerHTML = '<div class="empty">لم يُعثر على الاسم ضمن المتداولين الأعلى تصنيفاً. استخدم رقم المعرّف للوصول لأي متداول.</div>';
       return;
     }
     renderList(d.traders, 'نتائج البحث');
@@ -228,19 +248,27 @@ function renderList(traders, title){
   traders.forEach(t => cacheRows[t.id] = t);
   $('#listTitle').textContent = title;
   $('#listMeta').textContent = traders.length + ' متداول';
-  $('#list').innerHTML = traders.map((t,i)=>`
-    <button class="trader-row" data-id="${t.id}">
-      <span class="rank">${String(i+1).padStart(2,'0')}</span>
-      <span>
+  $('#list').innerHTML = traders.map((t,i)=>{
+    const age = daysSince(t.startTime);
+    const copierBad = has(t.copierPnl) && t.copierPnl < 0;
+    return `<button class="trader-row" data-id="${t.id}">
+      <div class="tr-1">
+        <span class="rank">${String(i+1).padStart(2,'0')}</span>
         <span class="tname">${esc(t.nickname)}</span>
-        <span class="tsub">${has(t.winRate)?'رابحة '+fmtNum(t.winRate,0)+'%':''}${has(t.copiers)?' · '+t.copiers+' ناسخ':''}</span>
-      </span>
-      <span class="troi ${cls(t.roi)}">${fmtPct(t.roi)}</span>
-    </button>`).join('');
+        <span class="troi ${cls(t.roi)}">${fmtPct(t.roi)}</span>
+      </div>
+      <div class="tr-2">
+        ${has(t.copierPnl)?`<span class="mini ${copierBad?'bad':'good'}">الناسخون <b>${fmtUsd(t.copierPnl)}</b></span>`:''}
+        ${has(t.mdd)?`<span class="mini ${t.mdd>40?'bad':''}">تراجع <b>${fmtNum(t.mdd,0)}%</b></span>`:''}
+        ${has(t.winRate)?`<span class="mini">رابحة <b>${fmtNum(t.winRate,0)}%</b></span>`:''}
+        ${has(age)?`<span class="mini ${age<90?'bad':''}"><b>${age}</b> يوم</span>`:''}
+      </div>
+    </button>`;
+  }).join('');
   document.querySelectorAll('.trader-row').forEach(b => b.onclick = () => selectTrader(b.dataset.id));
 }
 
-/* ---------- التفاصيل ---------- */
+/* ================= التفاصيل ================= */
 async function selectTrader(id, quiet){
   currentId = id;
   document.querySelectorAll('.trader-row').forEach(b => b.classList.toggle('active', b.dataset.id===id));
@@ -251,14 +279,80 @@ async function selectTrader(id, quiet){
   timer = setInterval(()=> currentId && selectTrader(currentId, true), 45000);
 }
 
+/* تقييم المخاطر — كله محسوب من بيانات باينس نفسها */
+function buildRisk(t, closed){
+  const rows = [];
+  const push = (lvl, txt, why) => rows.push({lvl, txt, why});
+
+  const age = daysSince(t.startTime);
+  const levs = closed.map(c=>c.leverage).filter(has);
+  const avgLev = avg(levs), maxLev = levs.length ? Math.max(...levs) : null;
+  const durs = closed.filter(c=>c.openTime&&c.closeTime).map(c=>c.closeTime-c.openTime);
+  const avgDur = avg(durs);
+  const losses = closed.filter(c=>has(c.roi)&&c.roi<0);
+  const worst = closed.length ? Math.min(...closed.map(c=>has(c.roi)?c.roi:0)) : null;
+
+  if(has(t.copierPnl)){
+    if(t.copierPnl < 0)
+      push('bad','الناسخون خاسرون رغم أرباح المتداول',
+        `مجموع نتائج من نسخوه ${fmtUsd(t.copierPnl)} — أرباحه لم تصل إليهم.`);
+    else
+      push('ok','الناسخون رابحون', `مجموع نتائج من نسخوه ${fmtUsd(t.copierPnl)}.`);
+  }
+
+  if(has(t.mdd)){
+    if(t.mdd > 40) push('bad',`أقصى تراجع مرتفع: ${fmtNum(t.mdd,1)}%`,
+      `في أسوأ فترة فقد الحساب ${fmtNum(t.mdd,0)}% من قيمته. تخيّل هذا على أموالك.`);
+    else if(t.mdd > 20) push('warn',`أقصى تراجع متوسط: ${fmtNum(t.mdd,1)}%`,'مقبول لكنه يتطلب تحمّلاً.');
+    else push('ok',`أقصى تراجع منخفض: ${fmtNum(t.mdd,1)}%`,'إدارة مخاطر منضبطة نسبياً.');
+  }
+
+  if(has(age)){
+    if(age < 90) push('bad',`سجل قصير: ${age} يوماً فقط`,'أقل من ٣ أشهر قد يكون حظاً في سوق صاعد لا مهارة.');
+    else if(age < 180) push('warn',`سجل متوسط: ${age} يوماً`,'لم يمر بعد بدورة سوق كاملة.');
+    else push('ok',`سجل طويل: ${age} يوماً`,'مرّ بظروف سوق متعددة.');
+  }
+
+  if(has(avgLev)){
+    if(avgLev >= 10) push('bad',`رافعة عالية: متوسط ×${fmtNum(avgLev,1)}`,
+      `حركة معاكسة ${fmtNum(100/avgLev,1)}% تكفي لتصفية المركز.`);
+    else if(avgLev >= 5) push('warn',`رافعة متوسطة: ×${fmtNum(avgLev,1)}`,
+      `أعلى رافعة في آخر الصفقات ×${maxLev}.`);
+    else push('ok',`رافعة منخفضة: ×${fmtNum(avgLev,1)}`,'مخاطرة أقل من المعتاد في العقود.');
+  }
+
+  if(has(avgDur)){
+    const mins = avgDur/60000;
+    if(mins < 120) push('warn','مضاربة سريعة',
+      `متوسط الصفقة ${fmtSpan(avgDur)} — يصعب تقليدها يدوياً، ستصلك متأخراً دائماً.`);
+    else push('ok','صفقات ممتدة', `متوسط الصفقة ${fmtSpan(avgDur)}.`);
+  }
+
+  if(closed.length){
+    if(!losses.length) push('warn','لا خسائر في آخر ١٠ صفقات',
+      'قد يعني انضباطاً، وقد يعني إبقاء الصفقات الخاسرة مفتوحة دون إغلاق.');
+    else push('ok',`${losses.length} خسائر من ${closed.length} صفقات`,
+      `أسوأ صفقة ${fmtPct(worst)} — الخسائر معلنة وهذا مؤشر شفافية.`);
+  }
+
+  const facts = { avgLev, maxLev, avgDur, lossCount: losses.length, total: closed.length };
+  return { rows, facts };
+}
+
 function renderDetail(d, id){
-  // دمج: القائمة فيها ROI ونسبة الربح، والتفاصيل فيها الأصول والناسخون
   const t = Object.assign({}, cacheRows[id] || {});
   for(const [k,v] of Object.entries(d.trader)) if(has(v)) t[k] = v;
 
+  const { rows, facts } = buildRisk(t, d.closed);
   const maxDur = Math.max(1, ...d.closed.map(c => (c.closeTime&&c.openTime) ? c.closeTime-c.openTime : 0));
 
-  const tradeHtml = d.closed.length ? d.closed.map(c=>{
+  const riskHtml = rows.length ? `<div class="risk">${rows.map(r=>`
+    <div class="risk-row">
+      <span class="risk-ico ico-${r.lvl}">${r.lvl==='ok'?'✓':'!'}</span>
+      <span>${esc(r.txt)}<span class="why">${esc(r.why)}</span></span>
+    </div>`).join('')}</div>` : '';
+
+  const tradesHtml = d.closed.length ? d.closed.map(c=>{
     const dur = (c.closeTime&&c.openTime) ? c.closeTime-c.openTime : 0;
     const w = Math.max(4, Math.round(dur/maxDur*100));
     const isLong = c.side.includes('LONG') || c.side==='BUY';
@@ -266,7 +360,7 @@ function renderDetail(d, id){
       <div class="trade-top">
         <span class="sym">${esc(c.symbol)}</span>
         <span class="chip ${isLong?'long':'short'}">${isLong?'شراء':'بيع'}</span>
-        ${has(c.leverage)?`<span class="chip lev">×${c.leverage}</span>`:''}
+        ${has(c.leverage)?`<span class="chip ${c.leverage>=10?'hi':'lev'}">×${c.leverage}</span>`:''}
         <span class="trade-roi ${cls(c.roi)}">${fmtPct(c.roi)}</span>
       </div>
       <div class="trade-pnl">${fmtUsd(c.pnl)} · دخول ${fmtNum(c.entryPrice,4)} → خروج ${fmtNum(c.exitPrice,4)}</div>
@@ -292,28 +386,40 @@ function renderDetail(d, id){
     </div>`;
   }).join('')
     : (t.positionShow === false
-        ? '<div class="note">هذا المتداول يُخفي مراكزه المفتوحة على باينس. سجل صفقاته المغلقة يبقى متاحاً بالأعلى.</div>'
+        ? '<div class="note">يُخفي مراكزه المفتوحة على باينس — لن تعرف ماذا يشتري الآن، فقط ماذا اشترى سابقاً.</div>'
         : '<div class="empty">لا توجد مراكز مفتوحة الآن.</div>');
 
   $('#detail').innerHTML = `
     <div class="hero">
-      <h2>${esc(t.nickname)}</h2>
+      <h2>${esc(t.nickname||id)}</h2>
       <div class="tags">
         ${has(t.aum)?`<span class="tag">الأصول ${fmtBig(t.aum)}</span>`:''}
-        ${has(t.mdd)?`<span class="tag">أقصى تراجع ${fmtNum(t.mdd,1)}%</span>`:''}
         ${has(t.copiers)?`<span class="tag">${t.copiers}${has(t.maxCopiers)?'/'+t.maxCopiers:''} ناسخ</span>`:''}
         ${has(d.totalClosed)?`<span class="tag">${d.totalClosed} صفقة إجمالاً</span>`:''}
+        ${has(t.profitShare)?`<span class="tag">عمولته ${fmtNum(t.profitShare,0)}% من ربحك</span>`:''}
       </div>
       <div class="live" style="margin-top:8px"><i class="dot"></i>آخر تحديث ${fmtTime(d.fetchedAt)} · كل ٤٥ ثانية</div>
     </div>
+
     <div class="stats">
-      <div class="stat"><b class="${cls(t.roi)}">${fmtPct(t.roi)}</b><span>العائد ROI</span></div>
-      <div class="stat"><b class="${cls(t.pnl)}">${fmtUsd(t.pnl)}</b><span>صافي ربح المتداول</span></div>
+      <div class="stat"><b class="${cls(t.roi)}">${fmtPct(t.roi)}</b><span>عائد المتداول</span></div>
+      <div class="stat"><b class="${cls(t.copierPnl)}">${fmtUsd(t.copierPnl)}</b><span>نتيجة الناسخين ← الأهم</span></div>
+      <div class="stat"><b class="${has(t.mdd)&&t.mdd>40?'down':''}">${has(t.mdd)?fmtNum(t.mdd,1)+'%':'—'}</b><span>أقصى تراجع</span></div>
       <div class="stat"><b>${has(t.winRate)?fmtNum(t.winRate,1)+'%':'—'}</b><span>الصفقات الرابحة</span></div>
-      <div class="stat"><b class="${cls(t.copierPnl)}">${fmtUsd(t.copierPnl)}</b><span>ربح الناسخين</span></div>
     </div>
+
+    <div class="sec-title">تقييم المخاطر <em>محسوب من بيانات باينس</em></div>
+    ${riskHtml}
+
+    <div class="facts">
+      <div class="fact"><b>${has(facts.avgLev)?'×'+fmtNum(facts.avgLev,1):'—'}</b><span>متوسط الرافعة</span></div>
+      <div class="fact"><b>${has(facts.maxLev)?'×'+facts.maxLev:'—'}</b><span>أعلى رافعة</span></div>
+      <div class="fact"><b>${fmtSpan(facts.avgDur)}</b><span>متوسط مدة الصفقة</span></div>
+      <div class="fact"><b>${facts.lossCount}/${facts.total}</b><span>صفقات خاسرة</span></div>
+    </div>
+
     <div class="sec-title">آخر ١٠ صفقات مغلقة <em>الشريط = مدة الصفقة</em></div>
-    ${tradeHtml}
+    ${tradesHtml}
     <div class="sec-title">مراكز مفتوحة الآن</div>
     ${openHtml}`;
 }
