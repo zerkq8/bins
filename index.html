@@ -126,6 +126,50 @@
     font:inherit; font-size:12px; padding:5px 13px; border-radius:8px; cursor:pointer; margin-top:8px}
   .addbtn.on{background:var(--amber); color:#15100A; border-color:var(--amber); font-weight:700}
 
+  /* ===== قسم التعلّم ===== */
+  .subtabs{display:flex; gap:6px; padding:11px 14px; border-bottom:1px solid var(--line); flex-wrap:wrap}
+  .subtabs button{background:#0C1524; border:1px solid var(--line); color:var(--muted);
+    font:inherit; font-size:12.5px; padding:6px 13px; border-radius:8px; cursor:pointer}
+  .subtabs button.on{background:var(--amber); color:#15100A; font-weight:700; border-color:var(--amber)}
+
+  .field{margin-bottom:12px}
+  .field label{display:block; font-size:12px; color:var(--muted); margin-bottom:5px}
+  .field input, .field select, .field textarea{width:100%; background:#0C1524;
+    border:1px solid var(--line); color:var(--text); padding:10px 12px; border-radius:8px;
+    font:inherit; font-size:14px}
+  .field input[type=number]{font-family:"IBM Plex Mono",monospace; direction:ltr; text-align:left}
+  .field textarea{min-height:70px; resize:vertical}
+  .field input:focus, .field select:focus, .field textarea:focus{outline:none; border-color:var(--amber)}
+  .frow{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+  @media(max-width:520px){ .frow{grid-template-columns:1fr} }
+  .go{background:var(--amber); color:#15100A; border:0; padding:11px 20px; border-radius:9px;
+    font:inherit; font-weight:700; font-size:14px; cursor:pointer; width:100%}
+  .pad{padding:15px 16px}
+
+  .read{border-top:1px solid #16223455; padding:12px 16px}
+  .read .k{font-size:12.5px; color:var(--muted)}
+  .read .v{font-family:"IBM Plex Mono",monospace; font-size:16px; font-weight:600; direction:ltr}
+  .read .why{font-size:11.5px; color:var(--dim); margin-top:4px; line-height:1.75}
+  .readgrid{display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--line)}
+  @media(max-width:620px){ .readgrid{grid-template-columns:repeat(2,1fr)} }
+  .rcell{background:var(--card-2); padding:11px 13px}
+  .rcell b{display:block; font-family:"IBM Plex Mono",monospace; font-size:15px; direction:ltr}
+  .rcell span{font-size:10.5px; color:var(--dim)}
+
+  .calcout{margin:14px 16px; border:1px solid var(--line); border-radius:10px; overflow:hidden}
+  .calcrow{display:flex; justify-content:space-between; align-items:center; gap:10px;
+    padding:11px 14px; border-bottom:1px solid #16223455; font-size:13px}
+  .calcrow:last-child{border-bottom:0}
+  .calcrow b{font-family:"IBM Plex Mono",monospace; font-size:15px; direction:ltr}
+  .calcrow.hi{background:#16223A}
+
+  .jtrade{border-top:1px solid #16223455; padding:12px 16px}
+  .jtop{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  .jreason{font-size:12px; color:var(--muted); margin-top:6px; line-height:1.8;
+    background:#16223A; padding:8px 11px; border-radius:7px}
+  .jmeta{font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--dim);
+    margin-top:6px; direction:ltr}
+
   .sig{padding:13px 16px; border-top:1px solid #16223455}
   .sig-top{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
   .sig-count{font-family:"IBM Plex Mono",monospace; font-weight:700; font-size:15px;
@@ -236,6 +280,7 @@
       <button id="tabTraders" class="on">المتداولون</button>
       <button id="tabTrust">الأجدر بالثقة</button>
       <button id="tabWatch">متابعتي</button>
+      <button id="tabLearn">أدواتي</button>
       <button id="tabSignals">إشارات حية</button>
     </div>
     <div class="hint">
@@ -267,6 +312,17 @@
       <span class="live"><i class="dot"></i><span id="rankMeta">جارِ المسح</span></span>
     </div>
     <div id="ranked"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
+  </section>
+</div>
+
+<div class="wrap" id="learnView" style="display:none">
+  <section class="panel" style="margin-top:16px">
+    <div class="subtabs">
+      <button id="stRead" class="on">قراءة عملة</button>
+      <button id="stCalc">حاسبة المخاطر</button>
+      <button id="stJournal">دفتر صفقاتي</button>
+    </div>
+    <div id="learnBody"></div>
   </section>
 </div>
 
@@ -591,6 +647,348 @@ function renderDetail(d, id){
   };
 }
 
+/* ================= أدواتي: قراءة · حاسبة · دفتر ================= */
+let learnMode = 'read', lastRead = null;
+
+/* ---------- ١) قراءة عملة ---------- */
+function readForm(){
+  return `<div class="pad">
+    <div class="field">
+      <label>رمز العملة على باينس</label>
+      <input id="symIn" value="${esc(lastRead?.symbol || 'BTCUSDT')}" placeholder="BTCUSDT" autocomplete="off">
+    </div>
+    <button class="go" id="symGo">اقرأ البيانات</button>
+    <div class="read" style="border:0;padding:12px 0 0">
+      <div class="why">لا يعطيك هذا القسم توصية بالشراء أو البيع. يعرض أرقام السوق الحقيقية
+      ويشرح معنى كل رقم، لتقرأ بنفسك بدل انتظار من يقرأ لك.</div>
+    </div>
+  </div>`;
+}
+
+function renderRead(d){
+  lastRead = d;
+  const trend = d.ma7 > d.ma30 ? 'صاعد' : d.ma7 < d.ma30 ? 'هابط' : 'متعادل';
+  const trendCls = d.ma7 > d.ma30 ? 'up' : d.ma7 < d.ma30 ? 'down' : '';
+  const volLabel = d.atrPct > 8 ? 'عالٍ جداً' : d.atrPct > 4 ? 'مرتفع' : d.atrPct > 2 ? 'متوسط' : 'منخفض';
+  const pos = d.posInRange;
+  const posLabel = pos > 80 ? 'قرب قمة الشهر' : pos < 20 ? 'قرب قاع الشهر' : 'في وسط المدى';
+
+  return readForm() + `
+  <div class="readgrid">
+    <div class="rcell"><b>${fmtNum(d.price, d.price>100?2:6)}</b><span>السعر الآن</span></div>
+    <div class="rcell"><b class="${cls(d.change24h)}">${fmtPct(d.change24h)}</b><span>تغيّر ٢٤ ساعة</span></div>
+    <div class="rcell"><b>${fmtBig(d.volume24h)}</b><span>حجم التداول ٢٤س</span></div>
+  </div>
+
+  <div class="read">
+    <div class="k">التقلب اليومي (ATR)</div>
+    <div class="v">${fmtNum(d.atrPct,2)}% — ${volLabel}</div>
+    <div class="why">يتحرك السعر يومياً بمقدار ${fmtNum(d.atr14, d.price>100?0:6)} في المتوسط.
+    أي وقف خسارة أقرب من هذا المدى سيُضرب بحركة عادية لا علاقة لها باتجاه السوق.
+    <b>هذا أهم رقم عند تحديد وقف الخسارة.</b></div>
+  </div>
+
+  <div class="read">
+    <div class="k">موقع السعر في مدى ٣٠ يوماً</div>
+    <div class="v ${pos>80?'down':pos<20?'up':''}">${fmtNum(pos,0)}% — ${posLabel}</div>
+    <div class="why">أعلى سعر خلال الشهر ${fmtNum(d.high30, d.price>100?2:6)}
+    وأدناه ${fmtNum(d.low30, d.price>100?2:6)}.
+    الشراء قرب القمة يعني مخاطرة أكبر لأن المسافة للأسفل أوسع من المسافة للأعلى.</div>
+  </div>
+
+  <div class="read">
+    <div class="k">اتجاه المتوسطات</div>
+    <div class="v ${trendCls}">${trend}</div>
+    <div class="why">متوسط ٧ أيام ${fmtNum(d.ma7, d.price>100?2:6)} مقابل متوسط ٣٠ يوماً
+    ${fmtNum(d.ma30, d.price>100?2:6)}. تقاطع المتوسطات وصف لما حدث، لا تنبؤ بما سيحدث —
+    كثيراً ما ينعكس بعد ظهور الإشارة مباشرة.</div>
+  </div>
+
+  <div class="read">
+    <div class="k">السيولة</div>
+    <div class="v">${d.trades24h ? Number(d.trades24h).toLocaleString('en-US') : '—'} صفقة</div>
+    <div class="why">كلما قلّ عدد الصفقات، صعُب الخروج بالسعر الذي تريده، وزاد الفارق
+    بين سعرك المطلوب وسعر التنفيذ. العملات قليلة السيولة تتحرك بعنف بأوامر صغيرة.</div>
+  </div>
+
+  <div class="read">
+    <div class="why" style="color:var(--muted)">
+      <b>ماذا تفعل بهذه الأرقام؟</b><br>
+      استخدم التقلب لتحديد وقف خسارة منطقي (عادة ١.٥ إلى ٢ ضعف ATR بعيداً عن دخولك)،
+      ثم انتقل لحاسبة المخاطر لتعرف حجم المركز المناسب لرأس مالك.
+      لا تبدأ من "كم أريد أن أربح" — ابدأ من "كم أتحمّل أن أخسر".
+    </div>
+  </div>`;
+}
+
+async function loadRead(sym){
+  $('#learnBody').innerHTML = readForm() + '<div class="skeleton"></div><div class="skeleton"></div>';
+  bindLearn();
+  try{
+    const d = await getJSON('/api/market?symbol=' + encodeURIComponent(sym));
+    $('#learnBody').innerHTML = renderRead(d);
+  }catch(e){
+    $('#learnBody').innerHTML = readForm() + `<div class="error">${esc(e.message)}</div>`;
+  }
+  bindLearn();
+}
+
+/* ---------- ٢) حاسبة المخاطر ---------- */
+function calcForm(){
+  return `<div class="pad">
+    <div class="field">
+      <label>رأس مالك الكامل بالدولار</label>
+      <input type="number" id="cCap" placeholder="1000" step="any">
+    </div>
+    <div class="field">
+      <label>نسبة المخاطرة من رأس المال في الصفقة الواحدة</label>
+      <select id="cRisk">
+        <option value="0.5">٠.٥٪ — متحفّظ جداً</option>
+        <option value="1" selected>١٪ — الموصى به عادة</option>
+        <option value="2">٢٪ — جريء</option>
+        <option value="5">٥٪ — خطر مرتفع</option>
+      </select>
+    </div>
+    <div class="frow">
+      <div class="field"><label>سعر الدخول</label>
+        <input type="number" id="cEntry" placeholder="100" step="any"></div>
+      <div class="field"><label>سعر وقف الخسارة</label>
+        <input type="number" id="cStop" placeholder="97" step="any"></div>
+    </div>
+    <div class="field">
+      <label>الهدف (اختياري — لحساب نسبة العائد للمخاطرة)</label>
+      <input type="number" id="cTarget" placeholder="106" step="any">
+    </div>
+    <button class="go" id="cGo">احسب</button>
+  </div>
+  <div id="calcResult"></div>`;
+}
+
+function runCalc(){
+  const cap = parseFloat($('#cCap').value);
+  const riskPct = parseFloat($('#cRisk').value);
+  const entry = parseFloat($('#cEntry').value);
+  const stop = parseFloat($('#cStop').value);
+  const target = parseFloat($('#cTarget').value);
+
+  if(!(cap>0 && entry>0 && stop>0)) {
+    $('#calcResult').innerHTML = '<div class="error">أدخل رأس المال وسعر الدخول ووقف الخسارة.</div>';
+    return;
+  }
+  if(entry === stop){
+    $('#calcResult').innerHTML = '<div class="error">وقف الخسارة لا يمكن أن يساوي سعر الدخول.</div>';
+    return;
+  }
+
+  const isLong = stop < entry;
+  const riskAmt = cap * riskPct / 100;
+  const distPct = Math.abs(entry - stop) / entry;
+  const posSize = riskAmt / distPct;
+  const lev = posSize / cap;
+  const units = posSize / entry;
+
+  let rr = null, profit = null;
+  if(target > 0){
+    const reward = Math.abs(target - entry) / entry;
+    rr = reward / distPct;
+    profit = riskAmt * rr;
+  }
+
+  const levWarn = lev > 5;
+  const rrWarn = rr !== null && rr < 1.5;
+
+  $('#calcResult').innerHTML = `<div class="calcout">
+    <div class="calcrow hi"><span>اتجاه الصفقة</span>
+      <b class="${isLong?'up':'down'}">${isLong?'لونق (شراء)':'شورت (بيع)'}</b></div>
+    <div class="calcrow"><span>أقصى خسارة إن ضُرب الوقف</span>
+      <b class="down">−$${fmtNum(riskAmt,2)}</b></div>
+    <div class="calcrow"><span>المسافة حتى الوقف</span>
+      <b>${fmtNum(distPct*100,2)}%</b></div>
+    <div class="calcrow hi"><span>حجم المركز المناسب</span>
+      <b>$${fmtNum(posSize,2)}</b></div>
+    <div class="calcrow"><span>عدد الوحدات</span>
+      <b>${fmtNum(units, units<1?6:4)}</b></div>
+    <div class="calcrow"><span>الرافعة اللازمة</span>
+      <b class="${levWarn?'down':''}">×${fmtNum(lev,2)}</b></div>
+    ${rr!==null?`
+    <div class="calcrow hi"><span>نسبة العائد للمخاطرة</span>
+      <b class="${rrWarn?'down':'up'}">1 : ${fmtNum(rr,2)}</b></div>
+    <div class="calcrow"><span>الربح إن تحقق الهدف</span>
+      <b class="up">+$${fmtNum(profit,2)}</b></div>`:''}
+  </div>
+
+  <div class="read">
+    <div class="why">
+      <b>كيف تقرأ هذا؟</b><br>
+      حجم المركز محسوب بحيث لا تخسر أكثر من <b>$${fmtNum(riskAmt,2)}</b> إن ضُرب وقفك —
+      مهما بلغ حجم المركز. هذه هي إدارة المخاطر: تبدأ من الخسارة المقبولة، لا من الربح المأمول.
+      ${levWarn?'<br><br><b style="color:var(--rust)">تحذير:</b> رافعة ×'+fmtNum(lev,1)+' مرتفعة. كلما زادت، اقترب سعر التصفية الإجباري من دخولك.':''}
+      ${rrWarn?'<br><br><b style="color:var(--rust)">تحذير:</b> نسبة العائد للمخاطرة أقل من 1:1.5 — تخاطر بكثير مقابل قليل. تحتاج نسبة نجاح عالية جداً لتربح على المدى الطويل.':''}
+      ${rr!==null&&rr>=2?'<br><br>نسبة 1:'+fmtNum(rr,1)+' جيدة — تربح أكثر مما تخاطر به، فتكفيك نسبة نجاح أقل من النصف لتبقى رابحاً.':''}
+    </div>
+  </div>`;
+}
+
+/* ---------- ٣) دفتر الصفقات ---------- */
+async function journalApi(payload){
+  const key = myKey();
+  if(!key) throw new Error('سجّل الدخول من تبويب «متابعتي» أولاً — الدفتر مرتبط بمفتاحك.');
+  const opt = payload
+    ? { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(payload) }
+    : {};
+  const res = await fetch('/api/journal?key=' + encodeURIComponent(key), opt);
+  const text = await res.text();
+  let d; try{ d = JSON.parse(text); }catch{ throw new Error('رد غير متوقع من الخادم.'); }
+  if(!res.ok) throw new Error(d.error || 'خطأ في الدفتر');
+  return d;
+}
+
+function journalForm(){
+  return `<div class="pad">
+    <div class="frow">
+      <div class="field"><label>الرمز</label>
+        <input id="jSym" placeholder="BTCUSDT" autocomplete="off"></div>
+      <div class="field"><label>الاتجاه</label>
+        <select id="jSide"><option value="LONG">لونق</option><option value="SHORT">شورت</option></select></div>
+    </div>
+    <div class="frow">
+      <div class="field"><label>سعر الدخول</label><input type="number" id="jEntry" step="any"></div>
+      <div class="field"><label>وقف الخسارة</label><input type="number" id="jStop" step="any"></div>
+    </div>
+    <div class="frow">
+      <div class="field"><label>الهدف</label><input type="number" id="jTarget" step="any"></div>
+      <div class="field"><label>حجم المركز $</label><input type="number" id="jSize" step="any"></div>
+    </div>
+    <div class="field">
+      <label>لماذا دخلت هذه الصفقة؟ (الأهم — اكتبه قبل الدخول لا بعده)</label>
+      <textarea id="jReason" placeholder="مثال: السعر قرب قاع الشهر، والتقلب منخفض، ووقفي أبعد من ATR بمرة ونصف"></textarea>
+    </div>
+    <button class="go" id="jAdd">سجّل الصفقة</button>
+  </div>
+  <div id="jList"><div class="skeleton"></div></div>`;
+}
+
+function renderJournal(trades){
+  if(!trades.length) return `<div class="note">
+    الدفتر فارغ. سجّل صفقاتك مع سببها، وبعد شهرين ستقرأ أنماط أخطائك بنفسك —
+    وهذا يعلّمك أكثر من أي توصية.</div>`;
+
+  const closed = trades.filter(t => t.exit_price !== null);
+  const wins = closed.filter(t => {
+    const isLong = t.side === 'LONG';
+    return isLong ? t.exit_price > t.entry : t.exit_price < t.entry;
+  });
+
+  const stats = closed.length ? `<div class="note">
+    أغلقت <b>${closed.length}</b> صفقة، رابحة منها <b>${wins.length}</b>
+    (${fmtNum(wins.length/closed.length*100,0)}%). راجع أسباب الخاسرة —
+    هل تكرر نفس الخطأ؟</div>` : '';
+
+  return stats + trades.map(t=>{
+    const isLong = t.side === 'LONG';
+    const isClosed = t.exit_price !== null;
+    let pnlPct = null;
+    if(isClosed && t.entry){
+      pnlPct = ((t.exit_price - t.entry) / t.entry) * 100 * (isLong ? 1 : -1);
+    }
+    return `<div class="jtrade">
+      <div class="jtop">
+        <span class="sym">${esc(t.symbol)}</span>
+        <span class="chip ${isLong?'long':'short'}">${isLong?'لونق':'شورت'}</span>
+        ${isClosed
+          ? `<span class="trade-roi ${cls(pnlPct)}">${fmtPct(pnlPct)}</span>`
+          : `<span class="mini">مفتوحة</span>`}
+        <span style="margin-inline-start:auto"></span>
+        ${!isClosed?`<button class="wbtn" data-close="${t.id}">إغلاق</button>`:''}
+        <button class="wbtn" data-jdel="${t.id}">حذف</button>
+      </div>
+      <div class="jmeta">
+        دخول ${fmtNum(t.entry,6)} · وقف ${fmtNum(t.stop,6)} · هدف ${fmtNum(t.target,6)}
+        ${t.size?' · حجم $'+fmtNum(t.size,2):''}
+        ${isClosed?' · خروج '+fmtNum(t.exit_price,6):''}
+      </div>
+      ${t.reason?`<div class="jreason">${esc(t.reason)}</div>`:''}
+      ${t.result_note?`<div class="jreason" style="border-inline-start:2px solid var(--amber)">${esc(t.result_note)}</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+async function loadJournal(){
+  $('#learnBody').innerHTML = journalForm();
+  bindLearn();
+  try{
+    const d = await journalApi();
+    $('#jList').innerHTML = renderJournal(d.trades);
+    bindJournalRows();
+  }catch(e){
+    $('#jList').innerHTML = `<div class="error">${esc(e.message)}</div>`;
+  }
+}
+
+function bindJournalRows(){
+  document.querySelectorAll('[data-close]').forEach(b => b.onclick = async () => {
+    const px = prompt('سعر الخروج؟');
+    if(px === null) return;
+    const note = prompt('ماذا تعلّمت من هذه الصفقة؟ (اختياري)') || '';
+    b.textContent = '...';
+    try{ const d = await journalApi({ close:b.dataset.close, exit_price: parseFloat(px), result_note: note });
+      $('#jList').innerHTML = renderJournal(d.trades); bindJournalRows();
+    }catch(e){ alert(e.message); }
+  });
+  document.querySelectorAll('[data-jdel]').forEach(b => b.onclick = async () => {
+    if(!confirm('حذف هذه الصفقة من الدفتر؟')) return;
+    try{ const d = await journalApi({ remove:b.dataset.jdel });
+      $('#jList').innerHTML = renderJournal(d.trades); bindJournalRows();
+    }catch(e){ alert(e.message); }
+  });
+}
+
+/* ---------- الربط ---------- */
+function bindLearn(){
+  const g = $('#symGo');
+  if(g) g.onclick = () => {
+    const v = ($('#symIn').value||'').trim().toUpperCase();
+    if(v.length < 5) return alert('اكتب رمزاً صحيحاً مثل BTCUSDT');
+    loadRead(v);
+  };
+  const si = $('#symIn');
+  if(si) si.addEventListener('keydown', e => { if(e.key==='Enter' && g) g.click(); });
+
+  const cg = $('#cGo');
+  if(cg) cg.onclick = runCalc;
+
+  const ja = $('#jAdd');
+  if(ja) ja.onclick = async () => {
+    const sym = ($('#jSym').value||'').trim().toUpperCase();
+    const entry = parseFloat($('#jEntry').value);
+    if(!sym || !(entry>0)) return alert('اكتب الرمز وسعر الدخول على الأقل.');
+    ja.textContent = 'جارٍ الحفظ...'; ja.disabled = true;
+    try{
+      const d = await journalApi({ trade: {
+        symbol: sym, side: $('#jSide').value,
+        entry, stop: parseFloat($('#jStop').value)||null,
+        target: parseFloat($('#jTarget').value)||null,
+        size: parseFloat($('#jSize').value)||null,
+        reason: $('#jReason').value,
+      }});
+      $('#jSym').value=''; $('#jEntry').value=''; $('#jStop').value='';
+      $('#jTarget').value=''; $('#jSize').value=''; $('#jReason').value='';
+      $('#jList').innerHTML = renderJournal(d.trades); bindJournalRows();
+    }catch(e){ alert(e.message); }
+    ja.textContent = 'سجّل الصفقة'; ja.disabled = false;
+  };
+}
+
+function showLearn(mode){
+  learnMode = mode;
+  $('#stRead').classList.toggle('on', mode==='read');
+  $('#stCalc').classList.toggle('on', mode==='calc');
+  $('#stJournal').classList.toggle('on', mode==='journal');
+  if(mode==='read'){ $('#learnBody').innerHTML = readForm(); bindLearn(); }
+  if(mode==='calc'){ $('#learnBody').innerHTML = calcForm(); bindLearn(); }
+  if(mode==='journal'){ loadJournal(); }
+}
+
 /* ================= قائمة المتابعة (Supabase) ================= */
 let watchTimer = null, watchIds = [];
 
@@ -884,16 +1282,18 @@ async function loadSignals(){
 }
 
 function showTab(which){
-  const map = { traders:'tabTraders', trust:'tabTrust', watch:'tabWatch', signals:'tabSignals' };
+  const map = { traders:'tabTraders', trust:'tabTrust', watch:'tabWatch', learn:'tabLearn', signals:'tabSignals' };
   Object.entries(map).forEach(([k,id]) => $('#'+id).classList.toggle('on', k===which));
 
   document.querySelector('.grid').style.display = which==='traders' ? '' : 'none';
   $('#rankedView').style.display  = which==='trust' ? '' : 'none';
   $('#watchView').style.display   = which==='watch' ? '' : 'none';
+  $('#learnView').style.display   = which==='learn' ? '' : 'none';
   $('#signalsView').style.display = which==='signals' ? '' : 'none';
 
   clearInterval(sigTimer); clearInterval(rankTimer); clearInterval(watchTimer);
   if(which==='watch'){ loadWatch(); watchTimer = setInterval(loadWatch, 60000); }
+  if(which==='learn'){ showLearn(learnMode); }
   if(which==='signals'){ loadSignals(); sigTimer = setInterval(loadSignals, 45000); }
   if(which==='trust'){
     $('#ranked').innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
@@ -905,6 +1305,10 @@ $('#tabSignals').onclick = () => showTab('signals');
 $('#tabTraders').onclick = () => showTab('traders');
 $('#tabTrust').onclick   = () => showTab('trust');
 $('#tabWatch').onclick   = () => showTab('watch');
+$('#tabLearn').onclick   = () => showTab('learn');
+$('#stRead').onclick     = () => showLearn('read');
+$('#stCalc').onclick     = () => showLearn('calc');
+$('#stJournal').onclick  = () => showLearn('journal');
 
 $('#go').onclick = search;
 $('#q').addEventListener('keydown', e => { if(e.key==='Enter') search(); });
