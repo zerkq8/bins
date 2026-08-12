@@ -90,6 +90,18 @@
   .btn-danger{background:none; color:#8A5248; border:1px solid #3A1F1A;
     font:inherit; font-size:11.5px; padding:5px 12px; border-radius:7px; cursor:pointer}
   .btn-danger:hover{background:#2A1512; color:#F0A997}
+  .alertbox{margin:14px 16px; padding:13px 15px; border-radius:10px;
+    background:#16223A; border:1px solid var(--line)}
+  .alertbox h4{font-family:"Tajawal"; font-size:14px; font-weight:700; margin:0 0 6px}
+  .alertbox p{font-size:11.5px; color:var(--dim); margin:0 0 10px; line-height:1.8}
+  .alertbox .row{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+  .alertbox input{flex:1; min-width:190px; background:#0C1524; border:1px solid var(--line);
+    color:var(--muted); padding:8px 11px; border-radius:7px; font-size:11px;
+    font-family:"IBM Plex Mono",monospace; direction:ltr}
+  .alertbox button{background:var(--amber); color:#15100A; border:0; padding:8px 16px;
+    border-radius:7px; font:inherit; font-weight:700; font-size:12.5px; cursor:pointer}
+  .alertstat{margin-top:9px; font-size:11.5px; color:var(--muted); font-family:"IBM Plex Mono",monospace; direction:ltr}
+
   .danger-zone{margin:16px; padding:12px 14px; border-radius:9px;
     border:1px dashed #3A1F1A; display:flex; align-items:center; gap:10px; flex-wrap:wrap}
   .danger-zone span{flex:1; font-size:11.5px; color:var(--dim); min-width:160px}
@@ -1068,6 +1080,45 @@ function userBar(){
   </div>`;
 }
 
+function alertBox(){
+  const url = location.origin + '/api/alerts?key=' + encodeURIComponent(myKey());
+  return `<div class="alertbox">
+    <h4>🔔 تنبيهات تيليجرام</h4>
+    <p>يفحص متابعيك ويرسل رسالة عند فتح أي مركز جديد أو إغلاقه.
+    لتشغيله تلقائياً على مدار الساعة، انسخ الرابط وضعه في خدمة جدولة مجانية
+    مثل cron-job.org كل دقيقتين.</p>
+    <div class="row">
+      <input id="cronUrl" value="${esc(url)}" readonly onclick="this.select()">
+      <button id="btnCopyUrl">نسخ</button>
+      <button id="btnTestAlert">فحص الآن</button>
+    </div>
+    <div class="alertstat" id="alertStat"></div>
+  </div>`;
+}
+
+function bindAlerts(){
+  const cp = $('#btnCopyUrl'), tb = $('#btnTestAlert');
+  if(cp) cp.onclick = () => {
+    const el = $('#cronUrl'); el.select();
+    try{ navigator.clipboard.writeText(el.value); cp.textContent = 'تم النسخ'; 
+      setTimeout(()=>cp.textContent='نسخ', 1800); }
+    catch{ document.execCommand('copy'); }
+  };
+  if(tb) tb.onclick = async () => {
+    tb.disabled = true; tb.textContent = 'جارٍ الفحص...';
+    $('#alertStat').textContent = '';
+    try{
+      const r = await fetch('/api/alerts?key=' + encodeURIComponent(myKey()));
+      const d = await r.json();
+      $('#alertStat').textContent = d.ok
+        ? `فُحص ${d.checked} متداولاً · أُرسل ${d.sent} تنبيهاً` +
+          (d.hiddenOrEmpty ? ` · ${d.hiddenOrEmpty} بلا مراكز ظاهرة` : '')
+        : 'خطأ: ' + (d.error || 'غير معروف');
+    }catch(e){ $('#alertStat').textContent = 'تعذّر الفحص: ' + e.message; }
+    tb.disabled = false; tb.textContent = 'فحص الآن';
+  };
+}
+
 function dangerZone(){
   return `<div class="danger-zone">
     <span>حذف الحساب يمسح قائمتك نهائياً من قاعدة البيانات. مفتاحك يبقى صالحاً لبدء قائمة جديدة.</span>
@@ -1140,7 +1191,8 @@ async function loadWatch(){
     if(!d.traders.length){
       $('#watch').innerHTML = userBar() + `<div class="note">
         قائمتك فارغة. افتح أي متداول من تبويب «المتداولون» واضغط
-        <b>☆ إضافة لمتابعتي</b>.</div>` + dangerZone();
+        <b>☆ إضافة لمتابعتي</b>.</div>` + alertBox() + dangerZone();
+      bindAlerts();
       return bindAuth();
     }
 
@@ -1170,7 +1222,8 @@ async function loadWatch(){
       </div>`;
     }).join('') + (d.missing.length
       ? `<div class="note">تعذّر جلب ${d.missing.length} — قد يكونوا أغلقوا محافظهم.</div>` : '')
-      + dangerZone();
+      + alertBox() + dangerZone();
+    bindAlerts();
 
     const next = {};
     d.traders.forEach(t => next[t.id] = { roi:t.roi, copierPnl:t.copierPnl });
