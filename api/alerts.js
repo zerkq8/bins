@@ -1,25 +1,21 @@
 /**
- * نقطة الفحص — تُستدعى دورياً من خدمة جدولة خارجية (cron-job.org)
- * أو يدوياً من الصفحة لاختبارها.
- *
+ * نقطة الفحص — تُستدعى دورياً من خدمة جدولة خارجية (cron-job.org).
  * الاستدعاء: /api/alerts?key=مفتاحك
+ *
+ * ⚠️ يستخدم نفس منطق lib/binance.js (normOpen + isOpenPosition) بدل
+ * تكرار منفصل، لأن هذه النقطة تُعيد كل رموز باينس (~٧٧٧) مع أصفار،
+ * ولا تحتوي حقل roi جاهزاً — الفلترة والحساب في مكان واحد فقط الآن.
  */
 const { runAlerts } = require('../lib/alerts');
-const { ENDPOINTS, HEADERS, BASE } = require('../lib/binance');
+const { ENDPOINTS, HEADERS, BASE, __internal } = require('../lib/binance');
 
-/** جلب المراكز المفتوحة لمتداول */
+/** جلب المراكز المفتوحة الحقيقية فقط (بعد استبعاد الأصفار) */
 async function callPositions(id) {
   const url = BASE + ENDPOINTS.openPositions.url.replace('{id}', id);
   const res = await fetch(url, { headers: HEADERS });
   const j = await res.json();
   const list = Array.isArray(j?.data) ? j.data : (j?.data?.list || []);
-  return list.map((t) => ({
-    symbol: t.symbol || '—',
-    side: String(t.positionSide || t.side || '').toUpperCase(),
-    entryPrice: Number(t.entryPrice ?? t.avgCost ?? t.openPrice) || null,
-    leverage: Number(t.leverage) || null,
-    roi: Number(t.roe ?? t.roi ?? t.pnlRate) || null,
-  })).filter((p) => p.symbol !== '—');
+  return __internal.normalizeOpenPositions(list);
 }
 
 module.exports = async (req, res) => {
