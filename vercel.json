@@ -1,7 +1,6 @@
 {
   "regions": ["fra1"],
   "functions": {
-    "api/**/*.js": { "maxDuration": 20 },
-    "api/alerts.js": { "maxDuration": 60 }
+    "api/**/*.js": { "maxDuration": 30 }
   }
 }
