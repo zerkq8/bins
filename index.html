@@ -599,7 +599,13 @@ function renderDetail(d, id){
         ${has(o.leverage)?`<span class="chip lev">×${o.leverage}</span>`:''}
         <span class="trade-roi ${cls(o.roi)}">${fmtPct(o.roi)}</span>
       </div>
-      <div class="trade-pnl">${fmtUsd(o.pnl)} غير محقق · دخول ${fmtNum(o.entryPrice,4)} · فُتح ${fmtTime(o.openTime)}</div>
+      <div class="trade-pnl">${fmtUsd(o.pnl)} غير محقق · دخول ${fmtNum(o.entryPrice,4)}</div>
+      <div class="trade-pnl" style="margin-top:2px">
+        ${has(o.marginReported)
+          ? `هامشه الفعلي (مُعلَن من باينس): <b style="color:var(--text)">${fmtUsd(Math.abs(o.marginReported)).replace('+','$')}</b>`
+          : `وضع Cross — لا هامش مخصص لهذا المركز وحده (رأس المال مشترك بين كل مراكزه)`}
+        ${has(o.notional)?` · حجم المركز ${fmtBig(o.notional)}`:''}
+      </div>
     </div>`;
   }).join('')
     : (t.positionShow === false
