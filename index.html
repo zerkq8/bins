@@ -295,6 +295,21 @@
   .hilo-box .lbl{font-size:10.5px; color:var(--dim)}
   .hilo-box b{display:block; font-family:"IBM Plex Mono",monospace; font-size:14px; direction:ltr; margin-top:2px}
   .hilo-box .dist{font-size:10.5px; margin-top:3px; direction:ltr}
+  .coin-tabs{display:flex; gap:6px; padding:11px 16px 0}
+  .coin-tabs button{background:#0C1524; border:1px solid var(--line); color:var(--muted);
+    font:inherit; font-size:12.5px; padding:6px 14px; border-radius:8px; cursor:pointer}
+  .coin-tabs button.on{background:var(--amber); color:#15100A; font-weight:700; border-color:var(--amber)}
+  .coin-add{display:flex; gap:7px; padding:13px 16px}
+  .coin-add input{flex:1; background:#0C1524; border:1px solid var(--line); color:var(--text);
+    padding:9px 12px; border-radius:8px; font:inherit; font-size:14px; direction:ltr; text-transform:uppercase}
+  .coin-add button{background:var(--amber); color:#15100A; border:0; padding:0 16px;
+    border-radius:8px; font:inherit; font-weight:700; font-size:13px; cursor:pointer}
+  .coin-row{padding:12px 16px; border-top:1px solid #16223455; display:flex; align-items:center; gap:10px}
+  .coin-row .csym{font-weight:700; font-size:14.5px; direction:ltr; flex:1}
+  .coin-row .cstat{font-size:11.5px; color:var(--dim); direction:ltr}
+  .coin-low-badge{font-size:10.5px; padding:2px 9px; border-radius:6px; background:#3A1B16; color:#F0A997; font-weight:700}
+  .coin-del{background:#16223A; border:1px solid var(--line); color:var(--muted);
+    font:inherit; font-size:11px; padding:4px 11px; border-radius:7px; cursor:pointer}
 </style>
 </head>
 <body>
@@ -365,7 +380,12 @@
       <h2>متابعتي</h2>
       <span class="live"><i class="dot"></i><span id="watchMeta">—</span></span>
     </div>
+    <div class="coin-tabs">
+      <button id="wtTraders" class="on">متداولون</button>
+      <button id="wtCoins">عملات</button>
+    </div>
     <div id="watch"></div>
+    <div id="coinWatch" style="display:none"></div>
   </section>
 </div>
 
@@ -1277,6 +1297,97 @@ function bindAuth(){
   };
 }
 
+
+/* ================= متابعة العملات (تنبيه عند القاع) ================= */
+let coinSubTab = 'traders';
+
+function coinAddForm(){
+  return `<div class="coin-add">
+    <input id="coinIn" placeholder="BTCUSDT" maxlength="20" autocomplete="off">
+    <button id="coinAddBtn">إضافة</button>
+  </div>
+  <div class="note" style="margin:0 16px 12px">
+    عند وصول سعر أي عملة هنا لأدنى قاع لها خلال ١٨٠ يوماً، تصلك رسالة تيليجرام —
+    عبر نفس رابط الجدولة المستخدم لتنبيهات المتداولين، بلا إعداد إضافي.
+  </div>
+  <div id="coinList"><div class="skeleton"></div></div>`;
+}
+
+function renderCoinList(coins){
+  if(!coins.length) return '<div class="empty">لا عملات متابَعة بعد.</div>';
+  return coins.map(c=>{
+    if(!c.ok) return `<div class="coin-row">
+      <span class="csym">${esc(c.symbol)}</span>
+      <span class="cstat error" style="direction:rtl">${esc(c.error)}</span>
+      <button class="coin-del" data-cdel="${esc(c.symbol)}">إزالة</button>
+    </div>`;
+    return `<div class="coin-row">
+      <span class="csym">${esc(c.symbol)}</span>
+      <span class="cstat">
+        ${fmtNum(c.current, c.current>100?2:6)}
+        ${has(c.distFromLowPct)?' · +'+fmtNum(c.distFromLowPct,1)+'% عن القاع':''}
+      </span>
+      ${c.atLow?'<span class="coin-low-badge">عند القاع</span>':''}
+      <button class="coin-del" data-cdel="${esc(c.symbol)}">إزالة</button>
+    </div>`;
+  }).join('');
+}
+
+async function coinApi(payload){
+  const key = myKey();
+  if(!key) throw new Error('سجّل الدخول أولاً.');
+  const opt = payload
+    ? { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(payload) }
+    : {};
+  const res = await fetch('/api/coinwatch?key=' + encodeURIComponent(key), opt);
+  const text = await res.text();
+  let d; try{ d = JSON.parse(text); }catch{ throw new Error('رد غير متوقع من الخادم.'); }
+  if(!res.ok) throw new Error(d.error || 'خطأ في متابعة العملات');
+  return d;
+}
+
+function bindCoinList(){
+  document.querySelectorAll('[data-cdel]').forEach(b => b.onclick = async () => {
+    b.textContent = '...';
+    try{ const d = await coinApi({ remove:b.dataset.cdel });
+      $('#coinList').innerHTML = renderCoinList(d.coins); bindCoinList();
+    }catch(e){ alert(e.message); }
+  });
+}
+
+async function loadCoinWatch(){
+  if(!myKey()){
+    $('#coinWatch').innerHTML = loginScreen('سجّل الدخول لمتابعة العملات.');
+    return bindAuth();
+  }
+  $('#coinWatch').innerHTML = coinAddForm();
+  const ai = $('#coinIn'), ab = $('#coinAddBtn');
+  if(ab) ab.onclick = async () => {
+    const v = (ai.value||'').trim().toUpperCase();
+    if(v.length < 5) return alert('اكتب رمزاً صحيحاً مثل BTCUSDT');
+    ab.disabled = true; ab.textContent = '...';
+    try{ const d = await coinApi({ add:v }); ai.value='';
+      $('#coinList').innerHTML = renderCoinList(d.coins); bindCoinList();
+    }catch(e){ alert(e.message); }
+    ab.disabled = false; ab.textContent = 'إضافة';
+  };
+  if(ai) ai.addEventListener('keydown', e => { if(e.key==='Enter' && ab) ab.click(); });
+
+  try{ const d = await coinApi(); $('#coinList').innerHTML = renderCoinList(d.coins); bindCoinList(); }
+  catch(e){ $('#coinList').innerHTML = `<div class="error">${esc(e.message)}</div>`; }
+}
+
+function showCoinSubTab(which){
+  coinSubTab = which;
+  $('#wtTraders').classList.toggle('on', which==='traders');
+  $('#wtCoins').classList.toggle('on', which==='coins');
+  $('#watch').style.display = which==='traders' ? '' : 'none';
+  $('#coinWatch').style.display = which==='coins' ? '' : 'none';
+  if(which==='coins') loadCoinWatch();
+}
+$('#wtTraders').onclick = () => showCoinSubTab('traders');
+$('#wtCoins').onclick   = () => showCoinSubTab('coins');
+
 async function loadWatch(){
   if(!myKey()){
     $('#watchMeta').textContent = 'غير مسجّل';
@@ -1445,7 +1556,7 @@ function showTab(which){
   $('#signalsView').style.display = which==='signals' ? '' : 'none';
 
   clearInterval(sigTimer); clearInterval(rankTimer); clearInterval(watchTimer);
-  if(which==='watch'){ loadWatch(); watchTimer = setInterval(loadWatch, 60000); }
+  if(which==='watch'){ showCoinSubTab('traders'); loadWatch(); watchTimer = setInterval(loadWatch, 60000); }
   if(which==='learn'){ showLearn(learnMode); }
   if(which==='signals'){ loadSignals(); sigTimer = setInterval(loadSignals, 45000); }
   if(which==='trust'){
