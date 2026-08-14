@@ -289,6 +289,12 @@
   .pattern-warn{font-size:11.5px; color:#E8C77E; background:#241B0C; border-radius:7px;
     padding:8px 10px; line-height:1.8; margin-bottom:8px}
   .pattern-note{font-size:11px; color:var(--dim); line-height:1.8}
+  .pattern-hilo{display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--line);
+    border:1px solid var(--line); border-radius:9px; overflow:hidden; margin-bottom:10px}
+  .hilo-box{background:var(--card-2); padding:10px 12px}
+  .hilo-box .lbl{font-size:10.5px; color:var(--dim)}
+  .hilo-box b{display:block; font-family:"IBM Plex Mono",monospace; font-size:14px; direction:ltr; margin-top:2px}
+  .hilo-box .dist{font-size:10.5px; margin-top:3px; direction:ltr}
 </style>
 </head>
 <body>
@@ -777,13 +783,30 @@ function renderPattern(p){
       <div class="pattern-today">وضع اليوم: <b style="color:var(--text)">${esc(p.todayLabel)}</b>
         · بحثنا في آخر ${p.lookbackDays} يوماً</div>
 
+      <div class="pattern-hilo">
+        <div class="hilo-box">
+          <span class="lbl">أعلى قمة خلال الفترة</span>
+          <b class="up">${fmtNum(p.period.high, p.period.high>100?2:6)}</b>
+          <div class="dist ${p.period.distFromHighPct<0?'down':''}">
+            السعر الحالي أدنى منها بـ ${Math.abs(p.period.distFromHighPct)}%
+          </div>
+        </div>
+        <div class="hilo-box">
+          <span class="lbl">أدنى قاع خلال الفترة</span>
+          <b class="down">${fmtNum(p.period.low, p.period.low>100?2:6)}</b>
+          <div class="dist ${p.period.distFromLowPct>0?'up':''}">
+            السعر الحالي أعلى منه بـ ${Math.abs(p.period.distFromLowPct)}%
+          </div>
+        </div>
+      </div>
+
       ${total === 0
         ? `<div class="pattern-note">لم يتكرر هذا الوضع بالضبط من قبل خلال الفترة المتاحة —
            لا توجد بيانات كافية لأي مقارنة.</div>`
         : `<div class="pattern-counts">
             <div class="pc-box"><b>${total}</b><span>مرة تكرر هذا الوضع</span></div>
-            <div class="pc-box"><b class="up">${p.up}</b><span>ارتفع بعدها (${upPct}%)</span></div>
-            <div class="pc-box"><b class="down">${p.down}</b><span>هبط بعدها (${downPct}%)</span></div>
+            <div class="pc-box"><b class="up">${p.up}</b><span>ارتفع${has(p.avgUpMovePct)?' بمتوسط '+fmtNum(p.avgUpMovePct,1)+'%':''}</span></div>
+            <div class="pc-box"><b class="down">${p.down}</b><span>هبط${has(p.avgDownMovePct)?' بمتوسط '+fmtNum(Math.abs(p.avgDownMovePct),1)+'%':''}</span></div>
           </div>
           ${p.veryHighConfidenceNeeded
             ? `<div class="pattern-warn">⚠️ العيّنة صغيرة جداً (أقل من ٥ حالات) — هذا العدد لا يكفي
