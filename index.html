@@ -1232,7 +1232,8 @@ function bindAlerts(){
       const d = await r.json();
       $('#alertStat').textContent = d.ok
         ? `فُحص ${d.checked} متداولاً · أُرسل ${d.sent} تنبيهاً` +
-          (d.hiddenOrEmpty ? ` · ${d.hiddenOrEmpty} بلا مراكز ظاهرة` : '')
+          (d.hiddenOrEmpty ? ` · ${d.hiddenOrEmpty} بلا مراكز ظاهرة` : '') +
+          (has(d.coinsChecked) ? ` — العملات: فُحص ${d.coinsChecked} · أُرسل ${d.coinsSent||0}` : '')
         : 'خطأ: ' + (d.error || 'غير معروف');
     }catch(e){ $('#alertStat').textContent = 'تعذّر الفحص: ' + e.message; }
     tb.disabled = false; tb.textContent = 'فحص الآن';
