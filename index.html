@@ -276,6 +276,19 @@
   footer{padding:0 0 40px; color:var(--dim); font-size:11.5px; line-height:1.8}
   .live-badge{display:inline-block; font-size:10.5px; margin-inline-start:5px; vertical-align:middle; line-height:1}
   .live-badge.off{opacity:.5; filter:grayscale(1)}
+  .pattern-card{margin:0 16px 14px; border:1px solid #453413; border-radius:10px; overflow:hidden}
+  .pattern-head{padding:11px 14px; background:#1A1408; border-bottom:1px solid #453413}
+  .pattern-head b{font-family:"Tajawal"; font-size:13.5px; color:#FFDFA0}
+  .pattern-head .sub{font-size:11px; color:var(--dim); margin-top:3px; line-height:1.7}
+  .pattern-body{padding:13px 14px}
+  .pattern-today{font-size:12.5px; color:var(--muted); margin-bottom:10px}
+  .pattern-counts{display:flex; gap:8px; margin-bottom:10px}
+  .pc-box{flex:1; text-align:center; padding:9px 6px; border-radius:8px; background:var(--card-2)}
+  .pc-box b{display:block; font-family:"IBM Plex Mono",monospace; font-size:17px}
+  .pc-box span{font-size:10px; color:var(--dim)}
+  .pattern-warn{font-size:11.5px; color:#E8C77E; background:#241B0C; border-radius:7px;
+    padding:8px 10px; line-height:1.8; margin-bottom:8px}
+  .pattern-note{font-size:11px; color:var(--dim); line-height:1.8}
 </style>
 </head>
 <body>
@@ -308,7 +321,7 @@
 <div class="wrap"><div class="grid">
   <section class="panel">
     <div class="panel-head">
-      <h2 id="listTitle">الأفضل خلال ٣٠ يوماً</h2>
+      <h2 id="listTitle">الأفضل خلال ٩٠ يوماً</h2>
       <span class="live"><i class="dot"></i><span id="listMeta">جارِ التحميل</span></span>
     </div>
     <div id="list"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
@@ -418,7 +431,7 @@ const avg = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : null;
 
 /* ================= القائمة ================= */
 async function loadTop(){
-  try{ renderList((await getJSON('/api/top')).traders, 'الأفضل خلال ٣٠ يوماً'); }
+  try{ renderList((await getJSON('/api/top')).traders, 'الأفضل خلال ٩٠ يوماً'); }
   catch(e){
     $('#list').innerHTML = `<div class="error">${esc(e.message)}</div>`;
     $('#listMeta').textContent = 'متوقف';
@@ -741,12 +754,68 @@ function renderRead(d){
   </div>`;
 }
 
+
+/* ---------- السياق التاريخي: عدّاد صادق، ليس احتمالاً ---------- */
+function renderPattern(p){
+  if(!p || p.available === false){
+    return `<div class="pattern-card"><div class="pattern-body">
+      <div class="pattern-note">${esc(p?.reason || 'تعذّر تحليل السياق التاريخي لهذا الرمز.')}</div>
+    </div></div>`;
+  }
+
+  const total = p.total;
+  const upPct = total ? Math.round(p.up/total*100) : 0;
+  const downPct = total ? Math.round(p.down/total*100) : 0;
+
+  return `<div class="pattern-card">
+    <div class="pattern-head">
+      <b>📊 السياق التاريخي — تكرار لا تنبؤ</b>
+      <div class="sub">هذا عدّاد لما حدث فعلياً في الماضي — وليس احتمالاً ولا توصية.
+      اقرأه كمعلومة سياقية فقط.</div>
+    </div>
+    <div class="pattern-body">
+      <div class="pattern-today">وضع اليوم: <b style="color:var(--text)">${esc(p.todayLabel)}</b>
+        · بحثنا في آخر ${p.lookbackDays} يوماً</div>
+
+      ${total === 0
+        ? `<div class="pattern-note">لم يتكرر هذا الوضع بالضبط من قبل خلال الفترة المتاحة —
+           لا توجد بيانات كافية لأي مقارنة.</div>`
+        : `<div class="pattern-counts">
+            <div class="pc-box"><b>${total}</b><span>مرة تكرر هذا الوضع</span></div>
+            <div class="pc-box"><b class="up">${p.up}</b><span>ارتفع بعدها (${upPct}%)</span></div>
+            <div class="pc-box"><b class="down">${p.down}</b><span>هبط بعدها (${downPct}%)</span></div>
+          </div>
+          ${p.veryHighConfidenceNeeded
+            ? `<div class="pattern-warn">⚠️ العيّنة صغيرة جداً (أقل من ٥ حالات) — هذا العدد لا يكفي
+               إحصائياً ليعني أي شيء. اعتبره فضولاً لا معلومة.</div>`
+            : p.smallSample
+              ? `<div class="pattern-warn">⚠️ عيّنة صغيرة (${total} حالة فقط) — الفاصل الحقيقي حول
+                 هذه النسبة واسع جداً. لا تُبنى عليها قرارات.</div>`
+              : `<div class="pattern-warn">⚠️ حتى مع ${total} حالة، هذا لا يعني أن النمط
+                 سيتكرر — السوق يتغيّر باستمرار، والماضي لا يضمن المستقبل.</div>`}
+          <div class="pattern-note">الأفق الزمني: ${p.horizonDays} أيام بعد كل تكرار.
+          هذا القسم تجريبي — استخدمه للفضول والتعلّم، لا لاتخاذ قرار الدخول أو الخروج.</div>`}
+    </div>
+  </div>`;
+}
+
 async function loadRead(sym){
   $('#learnBody').innerHTML = readForm() + '<div class="skeleton"></div><div class="skeleton"></div>';
   bindLearn();
   try{
     const d = await getJSON('/api/market?symbol=' + encodeURIComponent(sym));
-    $('#learnBody').innerHTML = renderRead(d);
+    $('#learnBody').innerHTML = renderRead(d) + `<div id="patternSlot">
+      <div class="pattern-card"><div class="pattern-body">
+        <div class="pattern-note">جارِ تحليل السياق التاريخي…</div>
+      </div></div>
+    </div>`;
+    // نجلب السياق التاريخي بعد البيانات الأساسية بلا تعطيل — استعلام أثقل (١٨٠ يوماً)
+    getJSON('/api/pattern?symbol=' + encodeURIComponent(sym))
+      .then(p => { const el=$('#patternSlot'); if(el) el.innerHTML = renderPattern(p); })
+      .catch(e => { const el=$('#patternSlot');
+        if(el) el.innerHTML = `<div class="pattern-card"><div class="pattern-body">
+          <div class="pattern-note">تعذّر تحليل السياق التاريخي: ${esc(e.message)}</div>
+        </div></div>`; });
   }catch(e){
     $('#learnBody').innerHTML = readForm() + `<div class="error">${esc(e.message)}</div>`;
   }
