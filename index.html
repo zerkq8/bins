@@ -310,6 +310,28 @@
   .coin-low-badge{font-size:10.5px; padding:2px 9px; border-radius:6px; background:#3A1B16; color:#F0A997; font-weight:700}
   .coin-del{background:#16223A; border:1px solid var(--line); color:var(--muted);
     font:inherit; font-size:11px; padding:4px 11px; border-radius:7px; cursor:pointer}
+  .ta-card{margin:0 16px 14px; border:1px solid var(--line); border-radius:10px; overflow:hidden}
+  .ta-note{margin:12px 16px; padding:11px 13px; border-radius:9px; background:#16223A;
+    border:1px solid var(--line); color:var(--muted); font-size:12px; line-height:1.85}
+  .ta-note b{color:var(--text)}
+  .ta-section{border-top:1px solid #16223455; padding:12px 16px}
+  .ta-section:first-child{border-top:0}
+  .ta-section .k{font-size:12.5px; color:var(--muted); margin-bottom:4px}
+  .ta-section .v{font-family:"IBM Plex Mono",monospace; font-size:15px; font-weight:600; direction:ltr}
+  .ta-levels{display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--line);
+    border:1px solid var(--line); border-radius:9px; overflow:hidden; margin-top:8px}
+  .ta-lvl-box{background:var(--card-2); padding:10px 12px}
+  .ta-lvl-box .lbl{font-size:10.5px; color:var(--dim); margin-bottom:6px}
+  .ta-lvl-row{font-family:"IBM Plex Mono",monospace; font-size:12.5px; direction:ltr;
+    display:flex; justify-content:space-between; padding:3px 0}
+  .ta-lvl-row span:last-child{color:var(--dim); font-size:10.5px}
+  .ta-conf{display:inline-block; padding:4px 11px; border-radius:7px; font-size:12.5px; font-weight:600}
+  .ta-conf.strongbull{background:#10261F; color:#7FD9BF}
+  .ta-conf.strongbear{background:#3A1B16; color:#F0A997}
+  .ta-conf.partial{background:#241B0C; color:#E8C77E}
+  .ta-conf.conflict{background:#16223A; color:var(--muted)}
+  .ta-watch{background:#16223A; border-radius:8px; padding:10px 12px; font-size:12.5px;
+    line-height:1.85; margin-top:8px}
 </style>
 </head>
 <body>
@@ -369,6 +391,7 @@
       <button id="stRead" class="on">قراءة عملة</button>
       <button id="stCalc">حاسبة المخاطر</button>
       <button id="stJournal">دفتر صفقاتي</button>
+      <button id="stTech">تحليل فني</button>
     </div>
     <div id="learnBody"></div>
   </section>
@@ -1089,6 +1112,15 @@ function bindLearn(){
   const cg = $('#cGo');
   if(cg) cg.onclick = runCalc;
 
+  const tgBtn = $('#taGo');
+  if(tgBtn) tgBtn.onclick = () => {
+    const v = ($('#taSymIn').value||'').trim().toUpperCase();
+    if(v.length < 5) return alert('اكتب رمزاً صحيحاً مثل BTCUSDT');
+    loadTechnical(v);
+  };
+  const tsi = $('#taSymIn');
+  if(tsi) tsi.addEventListener('keydown', e => { if(e.key==='Enter' && tgBtn) tgBtn.click(); });
+
   const ja = $('#jAdd');
   if(ja) ja.onclick = async () => {
     const sym = ($('#jSym').value||'').trim().toUpperCase();
@@ -1111,14 +1143,134 @@ function bindLearn(){
   };
 }
 
+
+/* ---------- ٤) تحليل فني وصفي — بلا سعر دخول/خروج/هدف/درجة قرار ---------- */
+function taForm(){
+  return `<div class="pad">
+    <div class="field">
+      <label>رمز العملة على باينس</label>
+      <input id="taSymIn" value="${esc(lastTa?.symbol || 'BTCUSDT')}" placeholder="BTCUSDT" autocomplete="off">
+    </div>
+    <button class="go" id="taGo">حلّل</button>
+    <div class="ta-note">
+      هذا تحليل وصفي لحالة السوق الحالية — لا يحدد نقطة دخول أو خروج أو هدف ربح،
+      ولا يعطي درجة "قوة صفقة"، ولا يصدر قرار شراء أو بيع. يشرح لك ما تقوله المؤشرات
+      الآن، والقرار يبقى لك بالكامل.
+    </div>
+  </div>`;
+}
+let lastTa = null;
+
+function renderTechnical(a){
+  lastTa = a;
+  if(!a || a.available === false){
+    return taForm() + `<div class="ta-note">${esc(a?.reason || 'تعذّر التحليل لهذا الرمز.')}</div>`;
+  }
+  const ind = a.indicators, conf = a.confluence, wz = a.watchZones;
+  const confClass = conf.label.includes('بقوة (صاعد)') ? 'strongbull'
+    : conf.label.includes('بقوة (هابط)') ? 'strongbear'
+    : conf.label.includes('متعارضة') ? 'conflict' : 'partial';
+
+  const lvlRow = (l) => `<div class="ta-lvl-row"><span>${fmtNum(l.price, a.current>100?2:6)}</span>
+    <span>لُمست ${l.touches} مرة</span></div>`;
+
+  return taForm() + `
+  <div class="ta-card">
+    <div class="ta-section">
+      <div class="k">الاتجاه العام</div>
+      <div class="v">${esc(a.trend)}</div>
+      <div style="font-size:11.5px;color:var(--dim);margin-top:5px">${esc(a.structure)}</div>
+    </div>
+
+    <div class="ta-section">
+      <div class="k">RSI (١٤)</div>
+      <div class="v">${has(ind.rsi)?fmtNum(ind.rsi,1):'—'} ${ind.rsiRising===true?'↑':ind.rsiRising===false?'↓':''}</div>
+      <div style="font-size:11.5px;color:var(--dim);margin-top:3px">${esc(ind.rsiZone||'—')}</div>
+    </div>
+
+    <div class="ta-section">
+      <div class="k">MACD</div>
+      <div class="v">${has(ind.macdHist)?fmtNum(ind.macdHist,4):'—'}</div>
+      <div style="font-size:11.5px;color:var(--dim);margin-top:3px">
+        ${ind.macdCross ? 'تقاطع '+esc(ind.macdCross) : 'لا تقاطع حديث'}
+      </div>
+    </div>
+
+    <div class="ta-section">
+      <div class="k">المتوسطات المتحركة (٢٠/٥٠/٢٠٠)</div>
+      <div class="v">${esc(ind.priceVsEma || '—')}</div>
+      <div style="font-size:11px;color:var(--dim);margin-top:5px;font-family:'IBM Plex Mono',monospace;direction:ltr">
+        EMA20: ${fmtNum(ind.ema20, a.current>100?2:6)} ·
+        EMA50: ${fmtNum(ind.ema50, a.current>100?2:6)} ·
+        EMA200: ${fmtNum(ind.ema200, a.current>100?2:6)}
+      </div>
+    </div>
+
+    <div class="ta-section">
+      <div class="k">الحجم</div>
+      <div class="v">${esc(ind.volumeLabel)}</div>
+      ${has(ind.volumeRatio)?`<div style="font-size:11.5px;color:var(--dim);margin-top:3px">نسبة إلى متوسط ٢٠ يوماً: ${fmtNum(ind.volumeRatio,2)}×</div>`:''}
+    </div>
+
+    <div class="ta-section">
+      <div class="k">مستويات الدعم والمقاومة</div>
+      <div class="ta-levels">
+        <div class="ta-lvl-box">
+          <div class="lbl">مقاومة (أعلى السعر الحالي)</div>
+          ${a.levels.resistances.length ? a.levels.resistances.map(lvlRow).join('') : '<div style="font-size:11.5px;color:var(--dim)">لا مستويات واضحة</div>'}
+        </div>
+        <div class="ta-lvl-box">
+          <div class="lbl">دعم (أدنى السعر الحالي)</div>
+          ${a.levels.supports.length ? a.levels.supports.map(lvlRow).join('') : '<div style="font-size:11.5px;color:var(--dim)">لا مستويات واضحة</div>'}
+        </div>
+      </div>
+    </div>
+
+    <div class="ta-section">
+      <div class="k">توافق الإشارات (Confluence)</div>
+      <span class="ta-conf ${confClass}">${esc(conf.label)}</span>
+      <div style="font-size:11.5px;color:var(--dim);margin-top:8px;line-height:1.8">
+        ${conf.bullFactors.length?'يدعم الصعود: '+conf.bullFactors.map(esc).join('، ')+'<br>':''}
+        ${conf.bearFactors.length?'يدعم الهبوط: '+conf.bearFactors.map(esc).join('، '):''}
+      </div>
+    </div>
+
+    <div class="ta-section">
+      <div class="k">مناطق تستحق المراقبة</div>
+      <div class="ta-watch">${esc(wz.bullishWatch)}</div>
+      <div class="ta-watch" style="margin-top:6px">${esc(wz.bearishWatch)}</div>
+      <div class="ta-watch" style="margin-top:6px;color:var(--amber)">${esc(wz.invalidation)}</div>
+    </div>
+  </div>
+
+  <div class="ta-note">
+    مبني على ${a.candlesUsed} يوماً من بيانات باينس الرسمية · آخر تحديث ${fmtTime(a.fetchedAt)}<br>
+    هذا وصف لحالة السوق الآن، لا ضماناً لما سيحدث لاحقاً. القرار — إن وُجد — يبقى قرارك أنت.
+  </div>`;
+}
+
+async function loadTechnical(sym){
+  $('#learnBody').innerHTML = taForm() + '<div class="skeleton"></div><div class="skeleton"></div>';
+  bindLearn();
+  try{
+    const d = await getJSON('/api/market?symbol=' + encodeURIComponent(sym) + '&mode=technical');
+    $('#learnBody').innerHTML = renderTechnical(d);
+  }catch(e){
+    $('#learnBody').innerHTML = taForm() + `<div class="error">${esc(e.message)}</div>`;
+  }
+  bindLearn();
+}
+
 function showLearn(mode){
   learnMode = mode;
   $('#stRead').classList.toggle('on', mode==='read');
   $('#stCalc').classList.toggle('on', mode==='calc');
   $('#stJournal').classList.toggle('on', mode==='journal');
+  $('#stTech').classList.toggle('on', mode==='technical');
   if(mode==='read'){ $('#learnBody').innerHTML = readForm(); bindLearn(); }
   if(mode==='calc'){ $('#learnBody').innerHTML = calcForm(); bindLearn(); }
   if(mode==='journal'){ loadJournal(); }
+  if(mode==='technical'){ $('#learnBody').innerHTML = taForm(); bindLearn(); }
 }
 
 /* ================= قائمة المتابعة (Supabase) ================= */
@@ -1574,6 +1726,7 @@ $('#tabLearn').onclick   = () => showTab('learn');
 $('#stRead').onclick     = () => showLearn('read');
 $('#stCalc').onclick     = () => showLearn('calc');
 $('#stJournal').onclick  = () => showLearn('journal');
+$('#stTech').onclick     = () => showLearn('technical');
 
 $('#go').onclick = search;
 $('#q').addEventListener('keydown', e => { if(e.key==='Enter') search(); });
