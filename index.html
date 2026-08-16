@@ -361,6 +361,15 @@
   </div>
 </header>
 
+<div class="wrap">
+  <div class="caution">
+    <b>⚠️ تنبيه:</b> الأرباح المرتفعة (عائد فوق ٥٠٠٪) غالباً تأتي برافعة مالية عالية، وقد تعني خسارة رأس المال بالكامل بنفس السرعة.
+    هذا الموقع أداة فحص للمساعدة على القرار — <b>ليس توصية استثمارية</b>.
+    <a href="https://www.binance.com/en/copy-trading" target="_blank" rel="noopener noreferrer"
+       style="color:#FFDFA0">كيف تُحسب النسب في باينس ↗</a>
+  </div>
+</div>
+
 <div class="wrap"><div class="grid">
   <section class="panel">
     <div class="panel-head">
@@ -515,13 +524,64 @@ async function search(){
   }catch(e){ $('#list').innerHTML = `<div class="error">${esc(e.message)}</div>`; }
 }
 
+/* ---------- القيمة الحقيقية: عائد ÷ (أقصى تراجع × ١٠) ---------- */
+function trueValue(t){
+  if(!has(t.roi) || !has(t.mdd) || t.mdd <= 0) return null;
+  return t.roi / (t.mdd * 10);
+}
+function trueValueLabel(v){
+  if(v===null) return null;
+  if(v>5) return {txt:'ممتازة', cls:'good'};
+  if(v>=2) return {txt:'جيدة', cls:''};
+  if(v>=1) return {txt:'مقبولة', cls:''};
+  return {txt:'مخاطرة عالية مقابل العائد', cls:'bad'};
+}
+
+/* ---------- الفرز والمقارنة ---------- */
+let currentTraders = [], sortKey = null, sortDir = 'desc', compareIds = [];
+
+function sortBar(){
+  const opts = [
+    ['', 'الترتيب الافتراضي'],
+    ['roi', 'العائد'],
+    ['copierPnl', 'الناسخون'],
+    ['mdd', 'أقصى تراجع (الأقل أولاً)'],
+    ['age', 'عمر السجل (الأطول أولاً)'],
+    ['tv', 'القيمة الحقيقية'],
+  ];
+  return `<div style="display:flex;gap:7px;padding:9px 13px;border-bottom:1px solid var(--line);align-items:center;flex-wrap:wrap">
+    <span style="font-size:11.5px;color:var(--dim)">ترتيب:</span>
+    <select id="sortSel" style="background:#0C1524;border:1px solid var(--line);color:var(--text);
+      padding:5px 9px;border-radius:7px;font:inherit;font-size:12px">
+      ${opts.map(([v,l])=>`<option value="${v}" ${v===(sortKey||'')?'selected':''}>${l}</option>`).join('')}
+    </select>
+    ${compareIds.length>0?`<button id="btnCompareOpen" class="wbtn" style="margin-inline-start:auto;color:var(--amber);border-color:#4A3C1C">
+      قارن (${compareIds.length}) ↗</button>`:''}
+  </div>`;
+}
+
+function sortTraders(list){
+  if(!sortKey) return list;
+  const withVal = list.map(t => ({ t, v: sortKey==='age' ? daysSince(t.startTime) : sortKey==='tv' ? trueValue(t) : t[sortKey] }));
+  withVal.sort((a,b) => {
+    const av = has(a.v)?a.v:-Infinity, bv = has(b.v)?b.v:-Infinity;
+    if(sortKey==='mdd') return av - bv;   // الأقل تراجعاً أولاً
+    return bv - av;                        // البقية: الأعلى أولاً
+  });
+  return withVal.map(x => x.t);
+}
+
 function renderList(traders, title){
   traders.forEach(t => cacheRows[t.id] = t);
+  currentTraders = traders;
   $('#listTitle').textContent = title;
   $('#listMeta').textContent = traders.length + ' متداول';
-  $('#list').innerHTML = traders.map((t,i)=>{
+  const ordered = sortTraders(traders);
+  $('#list').innerHTML = sortBar() + ordered.map((t,i)=>{
     const age = daysSince(t.startTime);
     const copierBad = has(t.copierPnl) && t.copierPnl < 0;
+    const tv = trueValue(t), tvLbl = trueValueLabel(tv);
+    const inCompare = compareIds.includes(t.id);
     return `<button class="trader-row" data-id="${t.id}">
       <div class="tr-1">
         <span class="rank">${String(i+1).padStart(2,'0')}</span>
@@ -533,6 +593,7 @@ function renderList(traders, title){
         ${has(t.mdd)?`<span class="mini ${t.mdd>40?'bad':''}">تراجع <b>${fmtNum(t.mdd,0)}%</b></span>`:''}
         ${has(t.winRate)?`<span class="mini">رابحة <b>${fmtNum(t.winRate,0)}%</b></span>`:''}
         ${has(age)?`<span class="mini ${age<90?'bad':''}"><b>${age}</b> يوم</span>`:''}
+        ${tvLbl?`<span class="mini ${tvLbl.cls}" title="عائد ÷ (تراجع×١٠)">قيمة <b>${fmtNum(tv,1)}</b></span>`:''}
       </div>
       ${(()=>{ const f=[];
         if(copierBad) f.push('الناسخون خاسرون');
@@ -542,9 +603,83 @@ function renderList(traders, title){
           ? `<div class="flags">${f.map(x=>`<span class="flag">${x}</span>`).join('')}</div>`
           : `<div class="flags"><span class="clean">✓ بلا علامات خطر</span></div>`;
       })()}
+      <div style="margin-top:7px;padding-inline-start:31px" onclick="event.stopPropagation()">
+        <button class="wbtn compare-toggle ${inCompare?'on':''}" data-cmp="${t.id}"
+          style="${inCompare?'background:var(--amber);color:#15100A;border-color:var(--amber)':''}">
+          ${inCompare?'✓ في المقارنة':'+ قارن'}
+        </button>
+      </div>
     </button>`;
   }).join('');
   document.querySelectorAll('.trader-row').forEach(b => b.onclick = () => selectTrader(b.dataset.id));
+
+  const ss = $('#sortSel');
+  if(ss) ss.onchange = () => { sortKey = ss.value || null; renderList(currentTraders, title); };
+
+  document.querySelectorAll('.compare-toggle').forEach(b => b.onclick = () => {
+    const id = b.dataset.cmp;
+    if(compareIds.includes(id)) compareIds = compareIds.filter(x=>x!==id);
+    else if(compareIds.length < 3) compareIds.push(id);
+    else { alert('حتى ٣ متداولين للمقارنة — أزل واحداً أولاً.'); return; }
+    renderList(currentTraders, title);
+  });
+
+  const bco = $('#btnCompareOpen');
+  if(bco) bco.onclick = openCompare;
+}
+
+/* ---------- نافذة المقارنة ---------- */
+async function openCompare(){
+  if(compareIds.length < 2) return alert('اختر متداولَين على الأقل للمقارنة.');
+  $('#detail').innerHTML = '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>';
+  try{
+    const results = await Promise.all(compareIds.map(id => getJSON('/api/trader/'+encodeURIComponent(id))));
+    renderCompare(compareIds, results);
+    window.scrollTo({top:0, behavior:'smooth'});
+  }catch(e){ $('#detail').innerHTML = `<div class="error">${esc(e.message)}</div>`; }
+}
+
+function renderCompare(ids, results){
+  const rows = ids.map((id,i) => {
+    const t = Object.assign({}, cacheRows[id]||{});
+    for(const [k,v] of Object.entries(results[i].trader)) if(has(v)) t[k]=v;
+    return { id, t, closed: results[i].closed };
+  });
+  const metric = (label, get, fmt, betterHigh=true) => {
+    const vals = rows.map(r => get(r.t));
+    const validVals = vals.filter(has);
+    const best = validVals.length ? (betterHigh?Math.max(...validVals):Math.min(...validVals)) : null;
+    return `<div class="ta-section">
+      <div class="k">${label}</div>
+      <div style="display:grid;grid-template-columns:repeat(${rows.length},1fr);gap:8px;margin-top:6px">
+        ${rows.map((r,i)=>{
+          const v = vals[i];
+          const isBest = has(v) && best!==null && v===best;
+          return `<div style="text-align:center;padding:8px;border-radius:8px;background:${isBest?'#16223A':'transparent'};
+            border:1px solid ${isBest?'var(--amber)':'transparent'}">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:14px;direction:ltr">${fmt(v)}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  };
+  $('#detail').innerHTML = `
+    <div class="hero">
+      <h2>مقارنة ${rows.length} متداولين</h2>
+      <div style="display:grid;grid-template-columns:repeat(${rows.length},1fr);gap:8px;margin-top:10px">
+        ${rows.map(r=>`<div style="text-align:center;font-size:12.5px;font-weight:600">${esc(r.t.nickname||r.id)}</div>`).join('')}
+      </div>
+      <button class="addbtn" id="btnCompareClose" style="margin-top:10px">✕ إغلاق المقارنة</button>
+    </div>
+    ${metric('العائد', t=>t.roi, v=>fmtPct(v))}
+    ${metric('نتيجة الناسخين', t=>t.copierPnl, v=>fmtUsd(v))}
+    ${metric('أقصى تراجع', t=>t.mdd, v=>has(v)?fmtNum(v,1)+'%':'—', false)}
+    ${metric('عمر السجل (يوم)', t=>daysSince(t.startTime), v=>has(v)?v:'—')}
+    ${metric('القيمة الحقيقية', t=>trueValue(t), v=>has(v)?fmtNum(v,1):'—')}
+    <div class="ta-note">القيمة الحقيقية = العائد ÷ (أقصى تراجع × ١٠). كلما ارتفع الرقم، زاد العائد نسبةً لمخاطرته.</div>
+  `;
+  const bc = $('#btnCompareClose');
+  if(bc) bc.onclick = () => { $('#detail').innerHTML = '<div class="empty">اختر متداولاً لعرض تقييم المخاطر وآخر ١٠ صفقات.</div>'; };
 }
 
 /* ================= التفاصيل ================= */
@@ -1116,7 +1251,8 @@ function bindLearn(){
   if(tgBtn) tgBtn.onclick = () => {
     const v = ($('#taSymIn').value||'').trim().toUpperCase();
     if(v.length < 5) return alert('اكتب رمزاً صحيحاً مثل BTCUSDT');
-    loadTechnical(v);
+    const iv = $('#taIvIn') ? $('#taIvIn').value : '1d';
+    loadTechnical(v, iv);
   };
   const tsi = $('#taSymIn');
   if(tsi) tsi.addEventListener('keydown', e => { if(e.key==='Enter' && tgBtn) tgBtn.click(); });
@@ -1146,10 +1282,19 @@ function bindLearn(){
 
 /* ---------- ٤) تحليل فني وصفي — بلا سعر دخول/خروج/هدف/درجة قرار ---------- */
 function taForm(){
+  const curIv = lastTa?.interval || '1d';
+  const ivOpts = [['1h','ساعة'],['4h','٤ ساعات'],['1d','يومي'],['1w','أسبوعي']]
+    .map(([v,l]) => `<option value="${v}" ${v===curIv?'selected':''}>${l}</option>`).join('');
   return `<div class="pad">
-    <div class="field">
-      <label>رمز العملة على باينس</label>
-      <input id="taSymIn" value="${esc(lastTa?.symbol || 'BTCUSDT')}" placeholder="BTCUSDT" autocomplete="off">
+    <div class="frow">
+      <div class="field">
+        <label>رمز العملة على باينس</label>
+        <input id="taSymIn" value="${esc(lastTa?.symbol || 'BTCUSDT')}" placeholder="BTCUSDT" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>الإطار الزمني</label>
+        <select id="taIvIn">${ivOpts}</select>
+      </div>
     </div>
     <button class="go" id="taGo">حلّل</button>
     <div class="ta-note">
@@ -1175,9 +1320,10 @@ function renderTechnical(a){
     <span>لُمست ${l.touches} مرة</span></div>`;
 
   return taForm() + `
+  ${a.shortTimeframeWarning ? `<div class="ta-note" style="border-color:#453413;background:#1A1408;color:#E8C77E">${esc(a.shortTimeframeWarning)}</div>` : ''}
   <div class="ta-card">
     <div class="ta-section">
-      <div class="k">الاتجاه العام</div>
+      <div class="k">الاتجاه العام <span style="color:var(--dim);font-weight:400">· إطار ${esc(a.intervalLabel||'يومي')}</span></div>
       <div class="v">${esc(a.trend)}</div>
       <div style="font-size:11.5px;color:var(--dim);margin-top:5px">${esc(a.structure)}</div>
     </div>
@@ -1249,11 +1395,12 @@ function renderTechnical(a){
   </div>`;
 }
 
-async function loadTechnical(sym){
+async function loadTechnical(sym, interval){
   $('#learnBody').innerHTML = taForm() + '<div class="skeleton"></div><div class="skeleton"></div>';
   bindLearn();
   try{
-    const d = await getJSON('/api/market?symbol=' + encodeURIComponent(sym) + '&mode=technical');
+    const iv = interval || '1d';
+    const d = await getJSON('/api/market?symbol=' + encodeURIComponent(sym) + '&mode=technical&interval=' + encodeURIComponent(iv));
     $('#learnBody').innerHTML = renderTechnical(d);
   }catch(e){
     $('#learnBody').innerHTML = taForm() + `<div class="error">${esc(e.message)}</div>`;
