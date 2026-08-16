@@ -832,9 +832,21 @@ function renderDetail(d, id){
     <div class="stats">
       <div class="stat"><b class="${cls(t.roi)}">${fmtPct(t.roi)}</b><span>عائد المتداول</span></div>
       <div class="stat"><b class="${cls(t.copierPnl)}">${fmtUsd(t.copierPnl)}</b><span>نتيجة الناسخين ← الأهم</span></div>
-      <div class="stat"><b class="${has(t.mdd)&&t.mdd>40?'down':''}">${has(t.mdd)?fmtNum(t.mdd,1)+'%':'—'}</b><span>أقصى تراجع</span></div>
+      <div class="stat"><b class="${has(t.mdd)&&t.mdd>40?'down':''}">${has(t.mdd)?fmtNum(t.mdd,1)+'%':'—'}</b><span>أقصى تراجع (مُعلَن)</span></div>
       <div class="stat"><b>${has(t.winRate)?fmtNum(t.winRate,1)+'%':'—'}</b><span>الصفقات الرابحة</span></div>
     </div>
+
+    <div class="stats" style="margin-top:1px">
+      <div class="stat"><b class="${has(t.sharpe)?(t.sharpe>=1?'up':t.sharpe<0.5?'down':'warn'):''}">${has(t.sharpe)?fmtNum(t.sharpe,2):'—'}</b><span>Sharpe (من باينس مباشرة)</span></div>
+      <div class="stat"><b class="${has(t.realMdd)&&t.realMdd>40?'down':''}">${has(t.realMdd)?fmtNum(t.realMdd,1)+'%':'—'}</b><span>أقصى تراجع (محسوب من منحنى فعلي)</span></div>
+      <div class="stat"><b class="${has(t.sortino)?(t.sortino>=1?'up':t.sortino<0.5?'down':'warn'):''}">${has(t.sortino)?fmtNum(t.sortino,2):'—'}</b><span>Sortino (يعاقب الهبوط فقط)</span></div>
+      <div class="stat"><b>${has(t.daysUsed)?t.daysUsed:'—'}</b><span>أيام البيانات المستخدمة</span></div>
+    </div>
+    ${has(t.mdd)&&has(t.realMdd)&&Math.abs(t.mdd-t.realMdd)>10
+      ? `<div class="note" style="background:#241B0C;border:1px solid #453413;color:#E8C77E">
+          ⚠️ فرق ملحوظ بين تراجع باينس المُعلَن (${fmtNum(t.mdd,1)}%) والمحسوب من المنحنى الفعلي (${fmtNum(t.realMdd,1)}%)
+          — يستحق فحصاً إضافياً قبل الثقة الكاملة بأي منهما.</div>`
+      : ''}
 
     <div class="sec-title">تقييم المخاطر <em>محسوب من بيانات باينس</em></div>
     ${riskHtml}
