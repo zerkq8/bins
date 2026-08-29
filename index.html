@@ -1159,7 +1159,7 @@ async function loadSignal(symbol, interval){
   const ivLabels = { '5m':'5 دقائق', '15m':'15 دقيقة', '1h':'ساعة' };
 
   try{
-    const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${iv}&limit=100`);
+    const res = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=${iv}&limit=100`);
     if(!res.ok) throw new Error('not_found');
     const data = await res.json();
     if(!Array.isArray(data) || data.length < 30) throw new Error('not_enough_data');
@@ -1350,7 +1350,7 @@ async function runBacktest(symbol, interval){
   $('#backtestBody').innerHTML = '<div class="skeleton" style="margin-top:14px"></div><div class="skeleton"></div>';
 
   try{
-    const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${iv}&limit=1000`);
+    const res = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=${iv}&limit=1000`);
     if(!res.ok) throw new Error('not_found');
     const data = await res.json();
     if(!Array.isArray(data) || data.length < 60) throw new Error('not_enough_data');
