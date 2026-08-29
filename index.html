@@ -403,6 +403,7 @@
 <div class="wrap" id="signalView" style="display:none">
   <section class="panel" style="margin-top:16px">
     <div id="signalBody"></div>
+    <div id="backtestBody"></div>
   </section>
 </div>
 
@@ -1068,6 +1069,9 @@ function signalForm(){
       </div>
     </div>
     <button class="go" id="sigGo">فحص الإشارة</button>
+    <button class="go" id="sigBacktestGo" style="margin-top:8px;background:#16223A;color:var(--text);border:1px solid var(--line)">
+      📊 اختبار تاريخي — كم نجحت هذي الإشارة فعلياً؟
+    </button>
     <div class="ta-note">
       إشارة مبنية على تقاطع بسيط لمتوسطين متحركين (٧ و٢٥) مع تأكيد من RSI(14) —
       أداة تعليمية للتجربة، <b>ليست توصية استثمارية</b> ولا تضمن أي نتيجة.
@@ -1203,10 +1207,171 @@ function bindSignal(){
   };
   const inp = $('#sigSymIn');
   if(inp) inp.addEventListener('keydown', e => { if(e.key==='Enter' && btn) btn.click(); });
+
+  const bt = $('#sigBacktestGo');
+  if(bt) bt.onclick = () => {
+    const v = ($('#sigSymIn').value||'').trim().toUpperCase();
+    if(v.length < 5) return alert('اكتب رمزاً صحيحاً مثل XAUUSDT');
+    const iv = $('#sigIvIn') ? $('#sigIvIn').value : '15m';
+    runBacktest(v, iv);
+  };
+}
+
+/* ---------- ٦) اختبار تاريخي (Backtest) — نفس منطق الإشارة على بيانات ماضية حقيقية ---------- */
+function rsiSeries(closes, period){
+  period = period || 14;
+  const out = new Array(closes.length).fill(null);
+  for(let i=period; i<closes.length; i++){
+    let gains=0, losses=0;
+    for(let j=i-period+1;j<=i;j++){
+      const diff = closes[j]-closes[j-1];
+      if(diff>=0) gains+=diff; else losses+=Math.abs(diff);
+    }
+    const avgGain=gains/period, avgLoss=losses/period;
+    out[i] = avgLoss===0 ? 100 : 100 - (100/(1+(avgGain/avgLoss)));
+  }
+  return out;
+}
+
+function atrSeries(highs, lows, closes, period){
+  period = period || 14;
+  const trs = new Array(closes.length).fill(null);
+  for(let i=1;i<closes.length;i++){
+    trs[i] = Math.max(highs[i]-lows[i], Math.abs(highs[i]-closes[i-1]), Math.abs(lows[i]-closes[i-1]));
+  }
+  const out = new Array(closes.length).fill(null);
+  for(let i=period;i<closes.length;i++){
+    let sum=0;
+    for(let j=i-period+1;j<=i;j++) sum += trs[j];
+    out[i] = sum/period;
+  }
+  return out;
+}
+
+function simulateBacktest(highs, lows, closes){
+  const ma7arr = sma(closes,7), ma25arr = sma(closes,25);
+  const rsiArr = rsiSeries(closes,14);
+  const atrArr = atrSeries(highs, lows, closes, 14);
+  const atrMult = 1.5, rr = 2; // نفس نسبة المخاطرة/العائد المتفق عليها 1:2
+  const lookahead = 60; // أقصى عدد شموع ننتظر فيها تحقق الهدف أو الوقف
+
+  const trades = [];
+  let openTrade = null;
+
+  for(let i=25; i<closes.length; i++){
+    if(ma7arr[i]==null || ma25arr[i]==null || rsiArr[i]==null || atrArr[i]==null) continue;
+
+    // إغلاق الصفقة المفتوحة إن وُجدت (نتأكد هل لمست الهدف أو الوقف بهذي الشمعة)
+    if(openTrade && !openTrade.closed){
+      const t = openTrade;
+      if(t.signal==='buy'){
+        if(highs[i] >= t.target){ t.closed=true; t.outcome='win'; t.exitIndex=i; }
+        else if(lows[i] <= t.stop){ t.closed=true; t.outcome='loss'; t.exitIndex=i; }
+      } else {
+        if(lows[i] <= t.target){ t.closed=true; t.outcome='win'; t.exitIndex=i; }
+        else if(highs[i] >= t.stop){ t.closed=true; t.outcome='loss'; t.exitIndex=i; }
+      }
+      if(t.closed || (i - t.entryIndex) > lookahead){
+        if(!t.closed){ t.outcome='open'; t.closed=true; }
+        openTrade = null;
+      }
+    }
+
+    if(openTrade) continue; // صفقة واحدة بنفس الوقت — نفس القاعدة المتفق عليها
+
+    const above = ma7arr[i] > ma25arr[i];
+    const prevAbove = ma7arr[i-1] > ma25arr[i-1];
+    const crossedUp = above && !prevAbove;
+    const crossedDown = !above && prevAbove;
+
+    let signal = null;
+    if(crossedUp && rsiArr[i] >= 50) signal='buy';
+    else if(crossedDown && rsiArr[i] <= 50) signal='sell';
+
+    if(signal){
+      const entry = closes[i], atr = atrArr[i];
+      const risk = atr*atrMult;
+      const trade = {
+        entryIndex: i, signal, entry,
+        stop: signal==='buy' ? entry-risk : entry+risk,
+        target: signal==='buy' ? entry+risk*rr : entry-risk*rr,
+        closed:false, outcome:null, exitIndex:null
+      };
+      trades.push(trade);
+      openTrade = trade;
+    }
+  }
+  // أي صفقة بقيت مفتوحة لين نهاية البيانات
+  if(openTrade && !openTrade.closed){ openTrade.outcome='open'; openTrade.closed=true; }
+
+  return trades;
+}
+
+function renderBacktest(r){
+  if(r.error) return `<div class="error" style="margin-top:14px">${esc(r.error)}</div>`;
+
+  const wins = r.trades.filter(t=>t.outcome==='win').length;
+  const losses = r.trades.filter(t=>t.outcome==='loss').length;
+  const open = r.trades.filter(t=>t.outcome==='open').length;
+  const resolved = wins+losses;
+  const winRate = resolved ? (wins/resolved*100) : null;
+
+  return `<div class="ta-card" style="margin-top:14px">
+    <div class="ta-section">
+      <div class="k">نتيجة الاختبار التاريخي · ${esc(r.symbol)} · إطار ${esc(r.intervalLabel)}</div>
+      <div style="font-size:11.5px;color:var(--dim);margin-top:4px">
+        مبني على آخر ${r.candlesUsed} شمعة فعلية من بيانات باينانس (نفس منطق الإشارة بالضبط، مطبّق على الماضي)
+      </div>
+    </div>
+    <div class="facts">
+      <div class="fact"><b>${r.trades.length}</b><span>إشارات ظهرت</span></div>
+      <div class="fact"><b class="up">${wins}</b><span>وصلت للهدف</span></div>
+      <div class="fact"><b class="down">${losses}</b><span>ضربت وقف الخسارة</span></div>
+      <div class="fact"><b>${open}</b><span>لسا مفتوحة/غير محسومة</span></div>
+    </div>
+    <div class="ta-section" style="text-align:center">
+      <div class="k">نسبة النجاح (من الصفقات المحسومة فقط)</div>
+      <div style="font-size:30px;font-weight:800;color:${winRate===null?'var(--dim)':winRate>=50?'var(--jade)':'var(--rust)'};margin-top:4px">
+        ${winRate===null ? 'لا توجد صفقات كافية' : fmtNum(winRate,1)+'%'}
+      </div>
+    </div>
+    <div class="ta-note" style="margin:0 16px 16px">
+      ⚠️ هذي نتائج <b>الماضي فقط</b> على هذي العملة وهذا الإطار الزمني تحديداً — أداء تاريخي لا يضمن تكراره مستقبلاً.
+      النسبة تتغيّر لو جرّبت عملة أو إطار زمني مختلف. هذا الاختبار أداة تعليمية، ليس ضماناً.
+    </div>
+  </div>`;
+}
+
+async function runBacktest(symbol, interval){
+  const sym = symbol.toUpperCase();
+  const iv = interval || '15m';
+  const ivLabels = { '5m':'5 دقائق', '15m':'15 دقيقة', '1h':'ساعة' };
+
+  $('#backtestBody').innerHTML = '<div class="skeleton" style="margin-top:14px"></div><div class="skeleton"></div>';
+
+  try{
+    const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${iv}&limit=1000`);
+    if(!res.ok) throw new Error('not_found');
+    const data = await res.json();
+    if(!Array.isArray(data) || data.length < 60) throw new Error('not_enough_data');
+
+    const closes = data.map(k => parseFloat(k[4]));
+    const highs = data.map(k => parseFloat(k[2]));
+    const lows = data.map(k => parseFloat(k[3]));
+
+    const trades = simulateBacktest(highs, lows, closes);
+
+    $('#backtestBody').innerHTML = renderBacktest({
+      symbol: sym, intervalLabel: ivLabels[iv]||iv, candlesUsed: closes.length, trades
+    });
+  }catch(e){
+    $('#backtestBody').innerHTML = renderBacktest({ error: 'ما قدرت أشغّل الاختبار على هذا الرمز. تأكد من الرمز وحاول مرة ثانية.' });
+  }
 }
 
 function showSignal(){
   $('#signalBody').innerHTML = signalForm();
+  $('#backtestBody').innerHTML = '';
   bindSignal();
 }
 
