@@ -1076,6 +1076,16 @@ function signalForm(){
       إشارة مبنية على تقاطع بسيط لمتوسطين متحركين (٧ و٢٥) مع تأكيد من RSI(14) —
       أداة تعليمية للتجربة، <b>ليست توصية استثمارية</b> ولا تضمن أي نتيجة.
     </div>
+  </div>
+  <div style="border-top:1px solid var(--line); padding:15px 16px">
+    <button class="go" id="sigTopGo" style="background:var(--amber);color:#15100A">
+      🔍 أقوى 3 إشارات الآن (فيوتشر · ساعة)
+    </button>
+    <div class="ta-note">
+      يفحص ١٢ عملة كبيرة وسائلة على فريم الساعة بنفس منطق الإشارة، ويعرض الأقوى ٣ —
+      قراءة تقنية آلية وليست توصية بالشراء أو البيع.
+    </div>
+    <div id="topSignalsBody"></div>
   </div>`;
 }
 
@@ -1215,6 +1225,77 @@ function bindSignal(){
     const iv = $('#sigIvIn') ? $('#sigIvIn').value : '15m';
     runBacktest(v, iv);
   };
+
+  const tg = $('#sigTopGo');
+  if(tg) tg.onclick = () => scanTopSignals();
+}
+
+/* ---------- ٧) أقوى ٣ إشارات — فحص قائمة عملات ثابتة على فريم الساعة ---------- */
+const TOP_SCAN_LIST = [
+  'BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','DOGEUSDT',
+  'ADAUSDT','AVAXUSDT','LINKUSDT','LTCUSDT','TRXUSDT','DOTUSDT'
+];
+
+async function fetchSymbolSignal(sym, interval){
+  try{
+    const res = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=${interval}&limit=100`);
+    if(!res.ok) return null;
+    const data = await res.json();
+    if(!Array.isArray(data) || data.length < 30) return null;
+
+    const closes = data.map(k => parseFloat(k[4]));
+    const price = closes[closes.length-1];
+    const ma7arr = sma(closes,7), ma25arr = sma(closes,25);
+    const ma7 = ma7arr[ma7arr.length-1], ma25 = ma25arr[ma25arr.length-1];
+    const rsi = rsiCalc(closes,14);
+
+    const above = ma7 > ma25;
+    let signal = 'wait';
+    if(above && rsi >= 50) signal='buy';
+    else if(!above && rsi <= 50) signal='sell';
+
+    // مقياس "قوة" الإشارة: بعد RSI عن منطقة الحياد (50) + الفرق النسبي بين المتوسطين
+    const rsiStrength = Math.abs(rsi - 50);
+    const maStrength = Math.abs(ma7-ma25)/ma25*100;
+    const strength = rsiStrength + (maStrength*10);
+
+    return { symbol: sym, price, ma7, ma25, rsi, signal, strength };
+  }catch{ return null; }
+}
+
+async function scanTopSignals(){
+  $('#topSignalsBody').innerHTML = '<div class="skeleton" style="margin-top:10px"></div><div class="skeleton"></div><div class="skeleton"></div>';
+
+  const results = await Promise.all(TOP_SCAN_LIST.map(sym => fetchSymbolSignal(sym, '1h')));
+  const valid = results.filter(r => r && r.signal !== 'wait');
+  valid.sort((a,b) => b.strength - a.strength);
+  const top3 = valid.slice(0,3);
+
+  if(!top3.length){
+    $('#topSignalsBody').innerHTML = `<div class="note" style="margin-top:12px">
+      كل العملات المفحوصة حالياً بمنطقة "انتظار" — ما فيه تقاطع واضح بالساعة الحالية على أي منها.</div>`;
+    return;
+  }
+
+  $('#topSignalsBody').innerHTML = `<div style="margin-top:12px">
+    ${top3.map((r,i) => {
+      const word = r.signal==='buy' ? 'شراء' : 'بيع';
+      const color = r.signal==='buy' ? 'var(--jade)' : 'var(--rust)';
+      const confClass = r.signal==='buy' ? 'strongbull' : 'strongbear';
+      return `<div class="ta-section" style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div class="k">#${i+1} · ${esc(r.symbol)}</div>
+          <div class="v" style="font-size:15px">${fmtNum(r.price, r.price>1?2:5)}</div>
+          <div style="font-size:11px;color:var(--dim);margin-top:2px">RSI ${fmtNum(r.rsi,1)}</div>
+        </div>
+        <span class="ta-conf ${confClass}">${word}</span>
+      </div>`;
+    }).join('')}
+  </div>
+  <div class="ta-note">
+    مرتبة حسب قوة الإشارة (بعد RSI عن الحياد + الفرق النسبي بين المتوسطين) — ليست ترتيباً بحجم العائد المتوقع.
+    آخر تحديث ${fmtTime(Date.now())}.
+  </div>`;
 }
 
 /* ---------- ٦) اختبار تاريخي (Backtest) — نفس منطق الإشارة على بيانات ماضية حقيقية ---------- */
