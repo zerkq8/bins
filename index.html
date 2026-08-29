@@ -1054,35 +1054,25 @@ function atrCalc(highs, lows, closes, period){
 
 function signalForm(){
   return `<div class="pad">
-    <div class="frow">
-      <div class="field">
-        <label>رمز العملة على باينانس</label>
-        <input id="sigSymIn" value="${esc(lastSig?.symbol || 'XAUUSDT')}" placeholder="XAUUSDT" autocomplete="off">
-      </div>
-      <div class="field">
-        <label>الإطار الزمني</label>
-        <select id="sigIvIn">
-          <option value="15m" selected>15 دقيقة</option>
-          <option value="5m">5 دقائق</option>
-          <option value="1h">ساعة</option>
-        </select>
-      </div>
+    <div class="field">
+      <label>رمز العملة على باينانس</label>
+      <input id="sigSymIn" value="${esc(lastSig?.symbol || 'BTCUSDT')}" placeholder="BTCUSDT" autocomplete="off">
     </div>
-    <button class="go" id="sigGo">فحص الإشارة</button>
+    <button class="go" id="sigGo">فحص الإشارة (15د و1 و5 و10 ساعات معاً)</button>
     <button class="go" id="sigBacktestGo" style="margin-top:8px;background:#16223A;color:var(--text);border:1px solid var(--line)">
-      📊 اختبار تاريخي — كم نجحت هذي الإشارة فعلياً؟
+      📊 اختبار تاريخي (فريم الساعة) — كم نجحت هذي الإشارة فعلياً؟
     </button>
     <div class="ta-note">
-      إشارة مبنية على تقاطع بسيط لمتوسطين متحركين (٧ و٢٥) مع تأكيد من RSI(14) —
-      أداة تعليمية للتجربة، <b>ليست توصية استثمارية</b> ولا تضمن أي نتيجة.
+      نجيب شموع ١٥ دقيقة خام + شموع الساعة الخام من باينانس، وندمج شموع الساعة يدوياً لبناء أطر ٥ و١٠ ساعات (باينانس ما يوفرها جاهزة) —
+      نفس منطق MA(7)×MA(25) + RSI(14) على كل إطار. أداة تعليمية، <b>ليست توصية استثمارية</b>.
     </div>
   </div>
   <div style="border-top:1px solid var(--line); padding:15px 16px">
     <button class="go" id="sigTopGo" style="background:var(--amber);color:#15100A">
-      🔍 أقوى 3 إشارات الآن (فيوتشر · ساعة)
+      🔍 أقوى ٥ إشارات الآن (فيوتشر · 15د+1+5+10 ساعات)
     </button>
     <div class="ta-note">
-      يفحص ١٢ عملة كبيرة وسائلة على فريم الساعة بنفس منطق الإشارة، ويعرض الأقوى ٣ —
+      يفحص ١٢ عملة كبيرة وسائلة على الأطر الأربعة معاً، ويعرض الأقوى ٥ اللي فيها توافق بين ٣ أطر على الأقل —
       قراءة تقنية آلية وليست توصية بالشراء أو البيع.
     </div>
     <div id="topSignalsBody"></div>
@@ -1091,118 +1081,113 @@ function signalForm(){
 
 let lastSig = null;
 
+/* دمج شموع الساعة الخام لبناء أطر أكبر (٥ ساعات / ١٠ ساعات) يدوياً */
+function resampleCandles(rawKlines, factor){
+  const groups = [];
+  for(let i=0; i+factor<=rawKlines.length; i+=factor){
+    const slice = rawKlines.slice(i, i+factor);
+    const highs = slice.map(k=>parseFloat(k[2]));
+    const lows = slice.map(k=>parseFloat(k[3]));
+    groups.push({ high: Math.max(...highs), low: Math.min(...lows), close: parseFloat(slice[slice.length-1][4]) });
+  }
+  return groups;
+}
+
+function computeTFSignal(rawKlines, factor, label){
+  const groups = resampleCandles(rawKlines, factor);
+  if(groups.length < 26) return { label, signal:'wait', price:null, rsi:null, ma7:null, ma25:null, exitPrice:null, insufficient:true };
+
+  const closes = groups.map(g=>g.close), highs = groups.map(g=>g.high), lows = groups.map(g=>g.low);
+  const price = closes[closes.length-1];
+  const ma7arr = sma(closes,7), ma25arr = sma(closes,25);
+  const ma7 = ma7arr[ma7arr.length-1], ma25 = ma25arr[ma25arr.length-1];
+  const rsi = rsiCalc(closes,14);
+  const atr = atrCalc(highs, lows, closes, 14);
+  const above = ma7 > ma25;
+
+  let signal='wait', exitPrice=null;
+  if(above && rsi>=50){ signal='buy'; exitPrice = price - atr*1.5; }
+  else if(!above && rsi<=50){ signal='sell'; exitPrice = price + atr*1.5; }
+
+  return { label, signal, price, rsi, ma7, ma25, exitPrice, candlesUsed: closes.length };
+}
+
 function renderSignal(a){
   lastSig = a;
   if(!a || a.error){
     return signalForm() + `<div class="error">${esc(a?.error || 'تعذّر جلب البيانات لهذا الرمز.')}</div>`;
   }
 
-  const confClass = a.signal==='buy' ? 'strongbull' : a.signal==='sell' ? 'strongbear' : 'conflict';
-  const word = a.signal==='buy' ? 'شراء' : a.signal==='sell' ? 'بيع' : 'انتظار';
+  const tfBlock = (tf) => {
+    if(tf.insufficient) return `<div class="ta-section"><div class="k">${tf.label}</div>
+      <div style="font-size:12px;color:var(--dim)">بيانات غير كافية لهذا الإطار بعد.</div></div>`;
+    const word = tf.signal==='buy'?'شراء':tf.signal==='sell'?'بيع':'انتظار';
+    const confClass = tf.signal==='buy'?'strongbull':tf.signal==='sell'?'strongbear':'conflict';
+    return `<div class="ta-section">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div class="k">${tf.label}</div>
+          <div class="v" style="font-size:16px">${fmtNum(tf.price, tf.price>1?2:5)}</div>
+          <div style="font-size:11px;color:var(--dim);margin-top:2px">RSI ${fmtNum(tf.rsi,1)} · MA7 ${fmtNum(tf.ma7, tf.price>1?2:5)} · MA25 ${fmtNum(tf.ma25, tf.price>1?2:5)}</div>
+        </div>
+        <span class="ta-conf ${confClass}">${word}</span>
+      </div>
+      ${tf.exitPrice ? `<div style="font-size:11px;color:var(--rust);margin-top:6px">سعر الخروج المقترح: ${fmtNum(tf.exitPrice, tf.price>1?2:5)}</div>` : ''}
+    </div>`;
+  };
+
+  const allTf = [a.tf15, a.tf1, a.tf5, a.tf10];
+  const signals = allTf.map(t=>t.signal).filter(s=>s!=='wait');
+  const buyCount = signals.filter(s=>s==='buy').length, sellCount = signals.filter(s=>s==='sell').length;
+  let overall = 'wait', overallWord = 'تعارض / انتظار', overallClass = 'conflict';
+  if(buyCount >= 3 && buyCount > sellCount){ overall='buy'; overallWord=`توافق نحو الشراء (${buyCount}/4)`; overallClass='strongbull'; }
+  else if(sellCount >= 3 && sellCount > buyCount){ overall='sell'; overallWord=`توافق نحو البيع (${sellCount}/4)`; overallClass='strongbear'; }
 
   return signalForm() + `
   <div class="ta-card">
-    <div class="ta-section" style="display:flex;justify-content:space-between;align-items:center">
-      <div>
-        <div class="k">${esc(a.symbol)}</div>
-        <div class="v" style="font-size:19px">${fmtNum(a.price, a.price>1?2:5)}</div>
-      </div>
-      <span class="ta-conf ${confClass}" style="font-size:16px;padding:7px 18px">${word}</span>
-    </div>
-
-    <div class="ta-section">
-      <div class="k">المتوسطات المتحركة</div>
-      <div class="ta-levels">
-        <div class="ta-lvl-box">
-          <div class="lbl">MA(7)</div>
-          <b style="font-family:'IBM Plex Mono',monospace;font-size:14px;direction:ltr">${fmtNum(a.ma7, a.price>1?2:5)}</b>
-        </div>
-        <div class="ta-lvl-box">
-          <div class="lbl">MA(25)</div>
-          <b style="font-family:'IBM Plex Mono',monospace;font-size:14px;direction:ltr">${fmtNum(a.ma25, a.price>1?2:5)}</b>
-        </div>
+    <div class="ta-section" style="text-align:center">
+      <div class="k">${esc(a.symbol)} · التوافق بين الأطر الأربعة</div>
+      <span class="ta-conf ${overallClass}" style="font-size:16px;padding:7px 18px;margin-top:6px;display:inline-block">${overallWord}</span>
+      <div style="font-size:11px;color:var(--dim);margin-top:8px">
+        يعتبر "توافق" فقط لو ٣ أطر من أصل ٤ (على الأقل) اتفقوا على نفس الاتجاه.
       </div>
     </div>
-
-    <div class="ta-section">
-      <div class="k">RSI (١٤)</div>
-      <div class="v">${fmtNum(a.rsi,1)}</div>
-    </div>
-
-    ${(a.signal==='buy'||a.signal==='sell') ? `
-    <div class="ta-section">
-      <div class="k">مستويات مقترحة <span style="color:var(--dim);font-weight:400">· مبنية على تقلب العملة (ATR)</span></div>
-      <div class="ta-levels">
-        <div class="ta-lvl-box">
-          <div class="lbl">${a.signal==='buy'?'سعر الدخول':'سعر الدخول'}</div>
-          <b style="font-family:'IBM Plex Mono',monospace;font-size:14px;direction:ltr;color:${a.signal==='buy'?'var(--jade)':'var(--rust)'}">${fmtNum(a.price, a.price>1?2:5)}</b>
-        </div>
-        <div class="ta-lvl-box">
-          <div class="lbl">سعر الخروج المقترح <span style="color:var(--dim)">(لو تدهورت)</span></div>
-          <b style="font-family:'IBM Plex Mono',monospace;font-size:14px;direction:ltr;color:var(--rust)">${fmtNum(a.exitPrice, a.price>1?2:5)}</b>
-        </div>
-      </div>
-      <div style="font-size:11px;color:var(--dim);margin-top:6px;line-height:1.7">
-        لو ${a.signal==='buy'?'نزل':'طلع'} السعر لهذا المستوى، هذا يعني الفرضية اللي بُنيت عليها الإشارة أصبحت غير صحيحة —
-        مسافة الخروج = ${fmtNum(a.atrMult,1)}× متوسط تقلب العملة الفعلي (ATR)، مو رقم ثابت.
-      </div>
-    </div>` : ''}
-
-    <div class="ta-section">
-      <div class="k">السبب</div>
-      <div class="ta-watch">${esc(a.reason)}</div>
-    </div>
+    ${tfBlock(a.tf15)}
+    ${tfBlock(a.tf1)}
+    ${tfBlock(a.tf5)}
+    ${tfBlock(a.tf10)}
   </div>
 
   <div class="ta-note">
-    إطار ${esc(a.intervalLabel)} · مبني على آخر ${a.candlesUsed} شمعة من بيانات باينانس · آخر تحديث ${fmtTime(a.fetchedAt)}<br>
+    ١٥ دقيقة من بيانات خام مباشرة، والباقي مبني على شموع الساعة (مدمجة يدوياً لـ٥ و١٠ ساعات) · آخر تحديث ${fmtTime(a.fetchedAt)}<br>
     القرار — إن وُجد — يبقى قرارك أنت.
   </div>`;
 }
 
-async function loadSignal(symbol, interval){
+async function loadSignal(symbol){
   $('#signalBody').innerHTML = signalForm() + '<div class="skeleton"></div><div class="skeleton"></div>';
   bindSignal();
 
   const sym = symbol.toUpperCase();
-  const iv = interval || '15m';
-  const ivLabels = { '5m':'5 دقائق', '15m':'15 دقيقة', '1h':'ساعة' };
 
   try{
-    const res = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=${iv}&limit=100`);
-    if(!res.ok) throw new Error('not_found');
-    const data = await res.json();
-    if(!Array.isArray(data) || data.length < 30) throw new Error('not_enough_data');
+    const [res15, res1h] = await Promise.all([
+      fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=15m&limit=100`),
+      fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=1h&limit=500`)
+    ]);
+    if(!res15.ok || !res1h.ok) throw new Error('not_found');
+    const [raw15, raw1h] = await Promise.all([res15.json(), res1h.json()]);
+    if(!Array.isArray(raw15) || raw15.length < 30) throw new Error('not_enough_data');
+    if(!Array.isArray(raw1h) || raw1h.length < 260) throw new Error('not_enough_data');
 
-    const closes = data.map(k => parseFloat(k[4]));
-    const highs = data.map(k => parseFloat(k[2]));
-    const lows = data.map(k => parseFloat(k[3]));
-    const price = closes[closes.length-1];
-    const ma7arr = sma(closes,7), ma25arr = sma(closes,25);
-    const ma7 = ma7arr[ma7arr.length-1], ma25 = ma25arr[ma25arr.length-1];
-    const rsi = rsiCalc(closes,14);
-    const atr = atrCalc(highs, lows, closes, 14);
-    const atrMult = 1.5;
+    const tf15 = computeTFSignal(raw15, 1, '15 دقيقة');
+    const tf1 = computeTFSignal(raw1h, 1, '1 ساعة');
+    const tf5 = computeTFSignal(raw1h, 5, '5 ساعات');
+    const tf10 = computeTFSignal(raw1h, 10, '10 ساعات');
 
-    let signal='wait', reason='', exitPrice=null;
-    const above = ma7 > ma25;
-    if(above && rsi >= 50){
-      signal='buy'; reason='المتوسط السريع فوق البطيء، والزخم (RSI) يدعم الاتجاه الصاعد.';
-      exitPrice = price - (atr * atrMult);
-    } else if(!above && rsi <= 50){
-      signal='sell'; reason='المتوسط السريع تحت البطيء، والزخم (RSI) يدعم الاتجاه الهابط.';
-      exitPrice = price + (atr * atrMult);
-    } else {
-      reason='فيه تعارض بين تقاطع المتوسطات وقراءة الزخم — الوضع غير واضح بعد.';
-    }
-
-    $('#signalBody').innerHTML = renderSignal({
-      symbol: sym, price, ma7, ma25, rsi, signal, reason, exitPrice, atrMult,
-      interval: iv, intervalLabel: ivLabels[iv] || iv,
-      candlesUsed: closes.length, fetchedAt: Date.now()
-    });
+    $('#signalBody').innerHTML = renderSignal({ symbol: sym, tf15, tf1, tf5, tf10, fetchedAt: Date.now() });
   }catch(e){
-    $('#signalBody').innerHTML = renderSignal({ symbol: sym, error: 'ما قدرت ألقى هذا الرمز على باينانس. تأكد من الرمز (مثال صحيح: BTCUSDT) وحاول مرة ثانية.' });
+    $('#signalBody').innerHTML = renderSignal({ symbol: sym, error: 'ما قدرت ألقى هذا الرمز على باينانس فيوتشر، أو البيانات غير كافية. تأكد من الرمز (مثال صحيح: BTCUSDT) وحاول مرة ثانية.' });
   }
   bindSignal();
 }
@@ -1211,9 +1196,8 @@ function bindSignal(){
   const btn = $('#sigGo');
   if(btn) btn.onclick = () => {
     const v = ($('#sigSymIn').value||'').trim().toUpperCase();
-    if(v.length < 5) return alert('اكتب رمزاً صحيحاً مثل XAUUSDT');
-    const iv = $('#sigIvIn') ? $('#sigIvIn').value : '15m';
-    loadSignal(v, iv);
+    if(v.length < 5) return alert('اكتب رمزاً صحيحاً مثل BTCUSDT');
+    loadSignal(v);
   };
   const inp = $('#sigSymIn');
   if(inp) inp.addEventListener('keydown', e => { if(e.key==='Enter' && btn) btn.click(); });
@@ -1221,79 +1205,85 @@ function bindSignal(){
   const bt = $('#sigBacktestGo');
   if(bt) bt.onclick = () => {
     const v = ($('#sigSymIn').value||'').trim().toUpperCase();
-    if(v.length < 5) return alert('اكتب رمزاً صحيحاً مثل XAUUSDT');
-    const iv = $('#sigIvIn') ? $('#sigIvIn').value : '15m';
-    runBacktest(v, iv);
+    if(v.length < 5) return alert('اكتب رمزاً صحيحاً مثل BTCUSDT');
+    runBacktest(v, '1h');
   };
 
   const tg = $('#sigTopGo');
   if(tg) tg.onclick = () => scanTopSignals();
 }
 
-/* ---------- ٧) أقوى ٣ إشارات — فحص قائمة عملات ثابتة على فريم الساعة ---------- */
+/* ---------- ٧) أقوى ٥ إشارات — فحص قائمة عملات ثابتة على أطر 15د+1+5+10 ساعات ---------- */
 const TOP_SCAN_LIST = [
   'BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','DOGEUSDT',
   'ADAUSDT','AVAXUSDT','LINKUSDT','LTCUSDT','TRXUSDT','DOTUSDT'
 ];
 
-async function fetchSymbolSignal(sym, interval){
+async function fetchSymbolMultiTF(sym){
   try{
-    const res = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=${interval}&limit=100`);
-    if(!res.ok) return null;
-    const data = await res.json();
-    if(!Array.isArray(data) || data.length < 30) return null;
+    const [res15, res1h] = await Promise.all([
+      fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=15m&limit=100`),
+      fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=1h&limit=500`)
+    ]);
+    if(!res15.ok || !res1h.ok) return null;
+    const [raw15, raw1h] = await Promise.all([res15.json(), res1h.json()]);
+    if(!Array.isArray(raw15) || raw15.length < 30) return null;
+    if(!Array.isArray(raw1h) || raw1h.length < 260) return null;
 
-    const closes = data.map(k => parseFloat(k[4]));
-    const price = closes[closes.length-1];
-    const ma7arr = sma(closes,7), ma25arr = sma(closes,25);
-    const ma7 = ma7arr[ma7arr.length-1], ma25 = ma25arr[ma25arr.length-1];
-    const rsi = rsiCalc(closes,14);
+    const tf15 = computeTFSignal(raw15, 1, '15د');
+    const tf1 = computeTFSignal(raw1h, 1, '1س');
+    const tf5 = computeTFSignal(raw1h, 5, '5س');
+    const tf10 = computeTFSignal(raw1h, 10, '10س');
 
-    const above = ma7 > ma25;
-    let signal = 'wait';
-    if(above && rsi >= 50) signal='buy';
-    else if(!above && rsi <= 50) signal='sell';
+    const allTf = [tf15, tf1, tf5, tf10];
+    const signals = allTf.map(t=>t.signal).filter(s=>s!=='wait');
+    const buyCount = signals.filter(s=>s==='buy').length, sellCount = signals.filter(s=>s==='sell').length;
+    let overall = 'wait';
+    if(buyCount>=3 && buyCount>sellCount) overall='buy';
+    else if(sellCount>=3 && sellCount>buyCount) overall='sell';
 
-    // مقياس "قوة" الإشارة: بعد RSI عن منطقة الحياد (50) + الفرق النسبي بين المتوسطين
-    const rsiStrength = Math.abs(rsi - 50);
-    const maStrength = Math.abs(ma7-ma25)/ma25*100;
-    const strength = rsiStrength + (maStrength*10);
+    const agreeing = allTf.filter(t=>t.signal===overall && t.rsi!=null);
+    const strength = overall==='wait' ? 0 : agreeing.length*100 + avg(agreeing.map(t=>Math.abs(t.rsi-50)));
 
-    return { symbol: sym, price, ma7, ma25, rsi, signal, strength };
+    return { symbol: sym, overall, strength, tf15, tf1, tf5, tf10, agreeCount: agreeing.length };
   }catch{ return null; }
 }
 
 async function scanTopSignals(){
   $('#topSignalsBody').innerHTML = '<div class="skeleton" style="margin-top:10px"></div><div class="skeleton"></div><div class="skeleton"></div>';
 
-  const results = await Promise.all(TOP_SCAN_LIST.map(sym => fetchSymbolSignal(sym, '1h')));
-  const valid = results.filter(r => r && r.signal !== 'wait');
+  const results = await Promise.all(TOP_SCAN_LIST.map(sym => fetchSymbolMultiTF(sym)));
+  const valid = results.filter(r => r && r.overall !== 'wait');
   valid.sort((a,b) => b.strength - a.strength);
-  const top3 = valid.slice(0,3);
+  const top5 = valid.slice(0,5);
 
-  if(!top3.length){
+  if(!top5.length){
     $('#topSignalsBody').innerHTML = `<div class="note" style="margin-top:12px">
-      كل العملات المفحوصة حالياً بمنطقة "انتظار" — ما فيه تقاطع واضح بالساعة الحالية على أي منها.</div>`;
+      ما فيه توافق واضح بين ٣ أطر على الأقل لأي عملة حالياً — كلها بمنطقة تعارض/انتظار.</div>`;
     return;
   }
 
   $('#topSignalsBody').innerHTML = `<div style="margin-top:12px">
-    ${top3.map((r,i) => {
-      const word = r.signal==='buy' ? 'شراء' : 'بيع';
-      const color = r.signal==='buy' ? 'var(--jade)' : 'var(--rust)';
-      const confClass = r.signal==='buy' ? 'strongbull' : 'strongbear';
-      return `<div class="ta-section" style="display:flex;justify-content:space-between;align-items:center">
-        <div>
-          <div class="k">#${i+1} · ${esc(r.symbol)}</div>
-          <div class="v" style="font-size:15px">${fmtNum(r.price, r.price>1?2:5)}</div>
-          <div style="font-size:11px;color:var(--dim);margin-top:2px">RSI ${fmtNum(r.rsi,1)}</div>
+    ${top5.map((r,i) => {
+      const word = r.overall==='buy' ? 'شراء' : 'بيع';
+      const confClass = r.overall==='buy' ? 'strongbull' : 'strongbear';
+      const tfBadge = (t) => `<span class="mini ${t.signal===r.overall?(r.overall==='buy'?'good':'bad'):''}">${t.label} <b>${t.signal==='buy'?'ش':t.signal==='sell'?'ب':'—'}</b></span>`;
+      return `<div class="ta-section">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div class="k">#${i+1} · ${esc(r.symbol)}</div>
+            <div class="v" style="font-size:15px">${fmtNum(r.tf1.price, r.tf1.price>1?2:5)}</div>
+          </div>
+          <span class="ta-conf ${confClass}">${word} <span style="opacity:.7">(${r.agreeCount}/4 أطر)</span></span>
         </div>
-        <span class="ta-conf ${confClass}">${word}</span>
+        <div class="tr-2" style="padding-inline-start:0;margin-top:8px">
+          ${tfBadge(r.tf15)} ${tfBadge(r.tf1)} ${tfBadge(r.tf5)} ${tfBadge(r.tf10)}
+        </div>
       </div>`;
     }).join('')}
   </div>
   <div class="ta-note">
-    مرتبة حسب قوة الإشارة (بعد RSI عن الحياد + الفرق النسبي بين المتوسطين) — ليست ترتيباً بحجم العائد المتوقع.
+    مرتبة حسب عدد الأطر المتوافقة أولاً (من أصل ٤)، ثم قوة الزخم — ليست ترتيباً بحجم العائد المتوقع.
     آخر تحديث ${fmtTime(Date.now())}.
   </div>`;
 }
