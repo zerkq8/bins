@@ -1036,6 +1036,21 @@ function rsiCalc(closes, period){
   return 100 - (100/(1+(avgGain/avgLoss)));
 }
 
+function atrCalc(highs, lows, closes, period){
+  period = period || 14;
+  const trs = [];
+  for(let i=1;i<closes.length;i++){
+    const tr = Math.max(
+      highs[i]-lows[i],
+      Math.abs(highs[i]-closes[i-1]),
+      Math.abs(lows[i]-closes[i-1])
+    );
+    trs.push(tr);
+  }
+  const last = trs.slice(-period);
+  return last.reduce((a,b)=>a+b,0) / last.length;
+}
+
 function signalForm(){
   return `<div class="pad">
     <div class="frow">
@@ -1100,6 +1115,25 @@ function renderSignal(a){
       <div class="v">${fmtNum(a.rsi,1)}</div>
     </div>
 
+    ${(a.signal==='buy'||a.signal==='sell') ? `
+    <div class="ta-section">
+      <div class="k">مستويات مقترحة <span style="color:var(--dim);font-weight:400">· مبنية على تقلب العملة (ATR)</span></div>
+      <div class="ta-levels">
+        <div class="ta-lvl-box">
+          <div class="lbl">${a.signal==='buy'?'سعر الدخول':'سعر الدخول'}</div>
+          <b style="font-family:'IBM Plex Mono',monospace;font-size:14px;direction:ltr;color:${a.signal==='buy'?'var(--jade)':'var(--rust)'}">${fmtNum(a.price, a.price>1?2:5)}</b>
+        </div>
+        <div class="ta-lvl-box">
+          <div class="lbl">سعر الخروج المقترح <span style="color:var(--dim)">(لو تدهورت)</span></div>
+          <b style="font-family:'IBM Plex Mono',monospace;font-size:14px;direction:ltr;color:var(--rust)">${fmtNum(a.exitPrice, a.price>1?2:5)}</b>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--dim);margin-top:6px;line-height:1.7">
+        لو ${a.signal==='buy'?'نزل':'طلع'} السعر لهذا المستوى، هذا يعني الفرضية اللي بُنيت عليها الإشارة أصبحت غير صحيحة —
+        مسافة الخروج = ${fmtNum(a.atrMult,1)}× متوسط تقلب العملة الفعلي (ATR)، مو رقم ثابت.
+      </div>
+    </div>` : ''}
+
     <div class="ta-section">
       <div class="k">السبب</div>
       <div class="ta-watch">${esc(a.reason)}</div>
@@ -1127,23 +1161,29 @@ async function loadSignal(symbol, interval){
     if(!Array.isArray(data) || data.length < 30) throw new Error('not_enough_data');
 
     const closes = data.map(k => parseFloat(k[4]));
+    const highs = data.map(k => parseFloat(k[2]));
+    const lows = data.map(k => parseFloat(k[3]));
     const price = closes[closes.length-1];
     const ma7arr = sma(closes,7), ma25arr = sma(closes,25);
     const ma7 = ma7arr[ma7arr.length-1], ma25 = ma25arr[ma25arr.length-1];
     const rsi = rsiCalc(closes,14);
+    const atr = atrCalc(highs, lows, closes, 14);
+    const atrMult = 1.5;
 
-    let signal='wait', reason='';
+    let signal='wait', reason='', exitPrice=null;
     const above = ma7 > ma25;
     if(above && rsi >= 50){
       signal='buy'; reason='المتوسط السريع فوق البطيء، والزخم (RSI) يدعم الاتجاه الصاعد.';
+      exitPrice = price - (atr * atrMult);
     } else if(!above && rsi <= 50){
       signal='sell'; reason='المتوسط السريع تحت البطيء، والزخم (RSI) يدعم الاتجاه الهابط.';
+      exitPrice = price + (atr * atrMult);
     } else {
       reason='فيه تعارض بين تقاطع المتوسطات وقراءة الزخم — الوضع غير واضح بعد.';
     }
 
     $('#signalBody').innerHTML = renderSignal({
-      symbol: sym, price, ma7, ma25, rsi, signal, reason,
+      symbol: sym, price, ma7, ma25, rsi, signal, reason, exitPrice, atrMult,
       interval: iv, intervalLabel: ivLabels[iv] || iv,
       candlesUsed: closes.length, fetchedAt: Date.now()
     });
