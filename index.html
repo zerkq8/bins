@@ -351,6 +351,7 @@
       <button id="tabTrust">الأجدر بالثقة</button>
       <button id="tabWatch">متابعتي</button>
       <button id="tabLearn">تحليل فني</button>
+      <button id="tabSignal">إشارة سريعة</button>
     </div>
     <div class="hint">
       البحث بالاسم يغطي المتداولين الأعلى تصنيفاً فقط. للوصول لأي متداول:
@@ -396,6 +397,12 @@
 <div class="wrap" id="learnView" style="display:none">
   <section class="panel" style="margin-top:16px">
     <div id="learnBody"></div>
+  </section>
+</div>
+
+<div class="wrap" id="signalView" style="display:none">
+  <section class="panel" style="margin-top:16px">
+    <div id="signalBody"></div>
   </section>
 </div>
 
@@ -1005,6 +1012,164 @@ function showLearn(){
   bindLearn();
 }
 
+/* ---------- ٥) إشارة سريعة — تقاطع MA(7)/MA(25) + RSI(14) ---------- */
+function sma(values, period){
+  const res = [];
+  for(let i=0;i<values.length;i++){
+    if(i < period-1){ res.push(null); continue; }
+    let sum=0;
+    for(let j=i-period+1;j<=i;j++) sum += values[j];
+    res.push(sum/period);
+  }
+  return res;
+}
+
+function rsiCalc(closes, period){
+  period = period || 14;
+  let gains=0, losses=0;
+  for(let i=closes.length-period; i<closes.length; i++){
+    const diff = closes[i]-closes[i-1];
+    if(diff>=0) gains+=diff; else losses+=Math.abs(diff);
+  }
+  const avgGain=gains/period, avgLoss=losses/period;
+  if(avgLoss===0) return 100;
+  return 100 - (100/(1+(avgGain/avgLoss)));
+}
+
+function signalForm(){
+  return `<div class="pad">
+    <div class="frow">
+      <div class="field">
+        <label>رمز العملة على باينانس</label>
+        <input id="sigSymIn" value="${esc(lastSig?.symbol || 'XAUUSDT')}" placeholder="XAUUSDT" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>الإطار الزمني</label>
+        <select id="sigIvIn">
+          <option value="15m" selected>15 دقيقة</option>
+          <option value="5m">5 دقائق</option>
+          <option value="1h">ساعة</option>
+        </select>
+      </div>
+    </div>
+    <button class="go" id="sigGo">فحص الإشارة</button>
+    <div class="ta-note">
+      إشارة مبنية على تقاطع بسيط لمتوسطين متحركين (٧ و٢٥) مع تأكيد من RSI(14) —
+      أداة تعليمية للتجربة، <b>ليست توصية استثمارية</b> ولا تضمن أي نتيجة.
+    </div>
+  </div>`;
+}
+
+let lastSig = null;
+
+function renderSignal(a){
+  lastSig = a;
+  if(!a || a.error){
+    return signalForm() + `<div class="error">${esc(a?.error || 'تعذّر جلب البيانات لهذا الرمز.')}</div>`;
+  }
+
+  const confClass = a.signal==='buy' ? 'strongbull' : a.signal==='sell' ? 'strongbear' : 'conflict';
+  const word = a.signal==='buy' ? 'شراء' : a.signal==='sell' ? 'بيع' : 'انتظار';
+
+  return signalForm() + `
+  <div class="ta-card">
+    <div class="ta-section" style="display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div class="k">${esc(a.symbol)}</div>
+        <div class="v" style="font-size:19px">${fmtNum(a.price, a.price>1?2:5)}</div>
+      </div>
+      <span class="ta-conf ${confClass}" style="font-size:16px;padding:7px 18px">${word}</span>
+    </div>
+
+    <div class="ta-section">
+      <div class="k">المتوسطات المتحركة</div>
+      <div class="ta-levels">
+        <div class="ta-lvl-box">
+          <div class="lbl">MA(7)</div>
+          <b style="font-family:'IBM Plex Mono',monospace;font-size:14px;direction:ltr">${fmtNum(a.ma7, a.price>1?2:5)}</b>
+        </div>
+        <div class="ta-lvl-box">
+          <div class="lbl">MA(25)</div>
+          <b style="font-family:'IBM Plex Mono',monospace;font-size:14px;direction:ltr">${fmtNum(a.ma25, a.price>1?2:5)}</b>
+        </div>
+      </div>
+    </div>
+
+    <div class="ta-section">
+      <div class="k">RSI (١٤)</div>
+      <div class="v">${fmtNum(a.rsi,1)}</div>
+    </div>
+
+    <div class="ta-section">
+      <div class="k">السبب</div>
+      <div class="ta-watch">${esc(a.reason)}</div>
+    </div>
+  </div>
+
+  <div class="ta-note">
+    إطار ${esc(a.intervalLabel)} · مبني على آخر ${a.candlesUsed} شمعة من بيانات باينانس · آخر تحديث ${fmtTime(a.fetchedAt)}<br>
+    القرار — إن وُجد — يبقى قرارك أنت.
+  </div>`;
+}
+
+async function loadSignal(symbol, interval){
+  $('#signalBody').innerHTML = signalForm() + '<div class="skeleton"></div><div class="skeleton"></div>';
+  bindSignal();
+
+  const sym = symbol.toUpperCase();
+  const iv = interval || '15m';
+  const ivLabels = { '5m':'5 دقائق', '15m':'15 دقيقة', '1h':'ساعة' };
+
+  try{
+    const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${iv}&limit=100`);
+    if(!res.ok) throw new Error('not_found');
+    const data = await res.json();
+    if(!Array.isArray(data) || data.length < 30) throw new Error('not_enough_data');
+
+    const closes = data.map(k => parseFloat(k[4]));
+    const price = closes[closes.length-1];
+    const ma7arr = sma(closes,7), ma25arr = sma(closes,25);
+    const ma7 = ma7arr[ma7arr.length-1], ma25 = ma25arr[ma25arr.length-1];
+    const rsi = rsiCalc(closes,14);
+
+    let signal='wait', reason='';
+    const above = ma7 > ma25;
+    if(above && rsi >= 50){
+      signal='buy'; reason='المتوسط السريع فوق البطيء، والزخم (RSI) يدعم الاتجاه الصاعد.';
+    } else if(!above && rsi <= 50){
+      signal='sell'; reason='المتوسط السريع تحت البطيء، والزخم (RSI) يدعم الاتجاه الهابط.';
+    } else {
+      reason='فيه تعارض بين تقاطع المتوسطات وقراءة الزخم — الوضع غير واضح بعد.';
+    }
+
+    $('#signalBody').innerHTML = renderSignal({
+      symbol: sym, price, ma7, ma25, rsi, signal, reason,
+      interval: iv, intervalLabel: ivLabels[iv] || iv,
+      candlesUsed: closes.length, fetchedAt: Date.now()
+    });
+  }catch(e){
+    $('#signalBody').innerHTML = renderSignal({ symbol: sym, error: 'ما قدرت ألقى هذا الرمز على باينانس. تأكد من الرمز (مثال صحيح: BTCUSDT) وحاول مرة ثانية.' });
+  }
+  bindSignal();
+}
+
+function bindSignal(){
+  const btn = $('#sigGo');
+  if(btn) btn.onclick = () => {
+    const v = ($('#sigSymIn').value||'').trim().toUpperCase();
+    if(v.length < 5) return alert('اكتب رمزاً صحيحاً مثل XAUUSDT');
+    const iv = $('#sigIvIn') ? $('#sigIvIn').value : '15m';
+    loadSignal(v, iv);
+  };
+  const inp = $('#sigSymIn');
+  if(inp) inp.addEventListener('keydown', e => { if(e.key==='Enter' && btn) btn.click(); });
+}
+
+function showSignal(){
+  $('#signalBody').innerHTML = signalForm();
+  bindSignal();
+}
+
 /* ================= قائمة المتابعة (Supabase) ================= */
 let watchTimer = null, watchIds = [];
 
@@ -1391,17 +1556,19 @@ async function loadRanked(){
 
 /* ================= الإشارات الحية ================= */
 function showTab(which){
-  const map = { traders:'tabTraders', trust:'tabTrust', watch:'tabWatch', learn:'tabLearn' };
+  const map = { traders:'tabTraders', trust:'tabTrust', watch:'tabWatch', learn:'tabLearn', signal:'tabSignal' };
   Object.entries(map).forEach(([k,id]) => $('#'+id).classList.toggle('on', k===which));
 
   document.querySelector('.grid').style.display = which==='traders' ? '' : 'none';
   $('#rankedView').style.display  = which==='trust' ? '' : 'none';
   $('#watchView').style.display   = which==='watch' ? '' : 'none';
   $('#learnView').style.display   = which==='learn' ? '' : 'none';
+  $('#signalView').style.display  = which==='signal' ? '' : 'none';
 
   clearInterval(rankTimer); clearInterval(watchTimer);
   if(which==='watch'){ showCoinSubTab('traders'); loadWatch(); watchTimer = setInterval(loadWatch, 60000); }
   if(which==='learn'){ showLearn(); }
+  if(which==='signal'){ showSignal(); }
   if(which==='trust'){
     $('#ranked').innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
     loadRanked();
@@ -1412,6 +1579,7 @@ $('#tabTraders').onclick = () => showTab('traders');
 $('#tabTrust').onclick   = () => showTab('trust');
 $('#tabWatch').onclick   = () => showTab('watch');
 $('#tabLearn').onclick   = () => showTab('learn');
+$('#tabSignal').onclick  = () => showTab('signal');
 
 $('#go').onclick = search;
 $('#q').addEventListener('keydown', e => { if(e.key==='Enter') search(); });
