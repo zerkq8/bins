@@ -83,6 +83,18 @@
   .warn-box{margin-top:18px; padding:14px 16px; border-radius:12px; background:#241B0C;
     border:1px solid #453413; color:#E8C77E; font-size:12px; line-height:1.9}
   .warn-box b{color:#FFDFA0}
+
+  .emergency-card{margin-top:18px; border-radius:14px; background:#1A0E0C;
+    border:1px solid #4A2119; overflow:hidden}
+  .emergency-head{padding:14px 18px}
+  .emergency-head h2{font-size:14.5px; font-weight:700; color:#F0A997}
+  .emergency-head p{margin:4px 0 0; font-size:11.5px; color:#C98A7D; line-height:1.8}
+  .emergency-btn{width:calc(100% - 36px); margin:0 18px 18px; background:#8A2A1F; color:#FFE5DE;
+    border:1px solid #B33A28; padding:14px; border-radius:10px; font:inherit;
+    font-weight:700; font-size:14.5px; cursor:pointer}
+  .emergency-btn:disabled{opacity:.6}
+  .emergency-log{margin:0 18px 18px; padding:12px; border-radius:8px; background:#0C1524;
+    font-size:11.5px; font-family:"IBM Plex Mono",monospace; direction:ltr; max-height:200px; overflow-y:auto}
 </style>
 </head>
 <body>
@@ -126,7 +138,39 @@ function bindLogin(){
       renderSettings(d.settings);
     }catch(e){
       $('#app').innerHTML = loginScreen(e.message);
-      bindLogin();
+      
+function bindEmergencyButton(){
+  $('#emergencyBtn').onclick = async () => {
+    const confirmed = confirm('هل أنت متأكد تماماً؟\n\nهذا سيغلق كل مركز مفتوح فوراً بسعر السوق الحالي، رابحاً أو خاسراً، ويوقف البوت بالكامل.\n\nلا يمكن التراجع عن هذا.');
+    if(!confirmed) return;
+    const typed = prompt('للتأكيد النهائي، اكتب: نعم اغلق كل شيء');
+    if(typed !== 'نعم اغلق كل شيء'){ alert('النص غير مطابق — أُلغي الإجراء.'); return; }
+
+    const btn = $('#emergencyBtn');
+    btn.disabled = true; btn.textContent = 'جارٍ الإغلاق...';
+    try{
+      const res = await fetch('/api/botsettings?key=' + encodeURIComponent(adminKey), {
+        method: 'POST', headers: {'content-type':'application/json'},
+        body: JSON.stringify({ action: 'emergency_stop' }),
+      });
+      const d = await res.json();
+      const r = d.emergencyResult;
+      $('#emergencyLog').innerHTML = `<div class="emergency-log">${
+        (r.log || []).map(l => `${l.ok?'✅':'❌'} ${l.name}: ${JSON.stringify(l.detail)}`).join('<br>')
+      }</div>`;
+      alert(r.success ? 'تم الإغلاق الكامل بنجاح.' : 'اكتمل الإجراء، لكن راجع السجل — قد تكون هناك مشكلة جزئية.');
+      // نُحدّث الشاشة لتعكس أن البوت أصبح متوقفاً الآن
+      const settingsRes = await fetch('/api/botsettings?key=' + encodeURIComponent(adminKey));
+      const settingsData = await settingsRes.json();
+      if(settingsData.ok) renderSettings(settingsData.settings);
+    }catch(e){
+      alert('تعذّر الإغلاق: ' + e.message);
+    }
+    btn.disabled = false; btn.textContent = 'إغلاق كل شيء الآن';
+  };
+}
+
+bindLogin();
     }
   };
   btn.onclick = tryLogin;
@@ -207,6 +251,17 @@ function renderSettings(s){
       </div>
     </div>
 
+    <div class="emergency-card">
+      <div class="emergency-head">
+        <h2>🚨 إغلاق طارئ كامل</h2>
+        <p>يوقف البوت فوراً، ويلغي كل الأوامر المعلّقة، ويغلق كل مركز مفتوح
+        حالياً بسعر السوق — بصرف النظر عن كونه رابحاً أو خاسراً الآن.
+        منفصل تماماً عن مفتاح التشغيل العادي أعلاه.</p>
+      </div>
+      <button class="emergency-btn" id="emergencyBtn">إغلاق كل شيء الآن</button>
+      <div id="emergencyLog"></div>
+    </div>
+
     <div class="warn-box">
       ⚠️ حساب تجريبي (Demo Trading) بمال وهمي — لكن المنطق نفسه سيُستخدم لاحقاً بمالك الحقيقي.
       راجع الأرقام بعناية قبل كل حفظ.
@@ -218,6 +273,7 @@ function renderSettings(s){
     </div>
   `;
   bindSettingsForm(s);
+  bindEmergencyButton();
 }
 
 function bindSettingsForm(initial){
@@ -263,6 +319,38 @@ function bindSettingsForm(initial){
       $('#statusMsg').innerHTML = `<div class="status-msg err">❌ ${e.message}</div>`;
     }
     btn.disabled = false; btn.textContent = 'حفظ الإعدادات';
+  };
+}
+
+
+function bindEmergencyButton(){
+  $('#emergencyBtn').onclick = async () => {
+    const confirmed = confirm('هل أنت متأكد تماماً؟\n\nهذا سيغلق كل مركز مفتوح فوراً بسعر السوق الحالي، رابحاً أو خاسراً، ويوقف البوت بالكامل.\n\nلا يمكن التراجع عن هذا.');
+    if(!confirmed) return;
+    const typed = prompt('للتأكيد النهائي، اكتب: نعم اغلق كل شيء');
+    if(typed !== 'نعم اغلق كل شيء'){ alert('النص غير مطابق — أُلغي الإجراء.'); return; }
+
+    const btn = $('#emergencyBtn');
+    btn.disabled = true; btn.textContent = 'جارٍ الإغلاق...';
+    try{
+      const res = await fetch('/api/botsettings?key=' + encodeURIComponent(adminKey), {
+        method: 'POST', headers: {'content-type':'application/json'},
+        body: JSON.stringify({ action: 'emergency_stop' }),
+      });
+      const d = await res.json();
+      const r = d.emergencyResult;
+      $('#emergencyLog').innerHTML = `<div class="emergency-log">${
+        (r.log || []).map(l => `${l.ok?'✅':'❌'} ${l.name}: ${JSON.stringify(l.detail)}`).join('<br>')
+      }</div>`;
+      alert(r.success ? 'تم الإغلاق الكامل بنجاح.' : 'اكتمل الإجراء، لكن راجع السجل — قد تكون هناك مشكلة جزئية.');
+      // نُحدّث الشاشة لتعكس أن البوت أصبح متوقفاً الآن
+      const settingsRes = await fetch('/api/botsettings?key=' + encodeURIComponent(adminKey));
+      const settingsData = await settingsRes.json();
+      if(settingsData.ok) renderSettings(settingsData.settings);
+    }catch(e){
+      alert('تعذّر الإغلاق: ' + e.message);
+    }
+    btn.disabled = false; btn.textContent = 'إغلاق كل شيء الآن';
   };
 }
 
