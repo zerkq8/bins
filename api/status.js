@@ -2,19 +2,14 @@
  * api/tradetest.js
  * ⚠️ يستبدل api/status.js مؤقتاً — يعيد لأصله بعد الاستخدام.
  *
- * ⚠️ إصلاح جذري بعد اكتشاف حقيقي: حماية "فحص المركز أولاً" التي بنيت
- * سابقاً فشلت فعلياً — طلبان وصلا بالتزامن (على الأرجح بسبب إعادة
- * محاولة تلقائية من الشبكة/المتصفح بسبب بطء الاستجابة) أنتجا صفقتين
- * مكررتين رغم الحماية، لأن "الفحص ثم التصرف" (Check-then-Act) لا
- * يحمي من التزامن الحقيقي — كلا الطلبين يريان "لا يوجد مركز" معاً.
+ * الاختبار الجوهري "غير القابل للتفاوض": نفتح مركزاً صغيراً، ثم نضع
+ * وقف خسارة (STOP_MARKET) وهدف ربح (TAKE_PROFIT_MARKET) كأمرين
+ * فعليين مستقلين على خوادم باينس نفسها — لا كمنطق يراقبه كودنا. نتحقق
+ * أنهما يظهران كأوامر معلّقة حقيقية عبر /fapi/v1/openOrders (لا مجرد
+ * رد نجاح من طلبنا)، ثم ننظّف كل شيء (نلغي الأمرين ونغلق المركز يدوياً)
+ * لأننا لا ننتظر السعر الحقيقي ليصل لأي منهما خلال اختبار قصير كهذا.
  *
- * الحل: قفل ذري حقيقي (Atomic Lock) عبر قيد PRIMARY KEY في Supabase.
- * قاعدة البيانات نفسها تضمن أن طلباً واحداً فقط ينجح في "حجز" القفل،
- * بصرف النظر عن التوقيت — لا نعتمد على قراءة ثم قرار، بل على رفض
- * قاعدة البيانات نفسها لأي محاولة ثانية بنفس المفتاح.
- *
- * الاستدعاء العادي:     /api/status?key=مفتاحك
- * الاستدعاء التنفيذي:   /api/status?key=مفتاحك&confirm=yes-place-order&symbol=ETHUSDT
+ * الاستدعاء: /api/status?key=مفتاحك&confirm=yes-test-sltp&symbol=ETHUSDT
  */
 const trade = require('../lib/binanceTrade');
 
@@ -25,29 +20,19 @@ async function sb(path, options = {}) {
   const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
     ...options,
     headers: {
-      apikey: SB_KEY,
-      authorization: `Bearer ${SB_KEY}`,
-      'content-type': 'application/json',
-      ...(options.headers || {}),
+      apikey: SB_KEY, authorization: `Bearer ${SB_KEY}`,
+      'content-type': 'application/json', ...(options.headers || {}),
     },
   });
-  const text = await res.text();
-  let data;
-  try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
-  return { ok: res.ok, status: res.status, data };
+  return { ok: res.ok, status: res.status };
 }
-
-/** يحاول حجز القفل. true = نجح (نملك القفل الآن)، false = محجوز بالفعل */
 async function tryAcquireLock(lockKey) {
   const r = await sb('trade_locks', {
-    method: 'POST',
-    headers: { prefer: 'return=minimal' },
+    method: 'POST', headers: { prefer: 'return=minimal' },
     body: JSON.stringify([{ lock_key: lockKey }]),
   });
-  // نجاح الإدراج = حصلنا على القفل. فشل بسبب تكرار المفتاح (409/23505) = محجوز بالفعل
   return r.ok;
 }
-
 async function releaseLock(lockKey) {
   await sb(`trade_locks?lock_key=eq.${encodeURIComponent(lockKey)}`, { method: 'DELETE' });
 }
@@ -58,114 +43,131 @@ module.exports = async (req, res) => {
 
   const results = [];
   const check = (name, ok, detail) => results.push({ name, ok, detail });
-  const wantsLiveTest = req.query?.confirm === 'yes-place-order';
+  const wantsTest = req.query?.confirm === 'yes-test-sltp';
   const SYMBOL = String(req.query?.symbol || 'ETHUSDT').toUpperCase();
   const lockKey = `trade:${SYMBOL}`;
   let lockAcquired = false;
+  let qty = null;
 
   try {
-    const hasKey = !!process.env.BINANCE_DEMO_API_KEY;
-    const hasSecret = !!process.env.BINANCE_DEMO_API_SECRET;
-    check('مفاتيح Demo Trading موجودة', hasKey && hasSecret, { hasKey, hasSecret });
-    if (!hasKey || !hasSecret) throw new Error('لا يمكن المتابعة بلا مفاتيح');
-
-    const pingResult = await trade.ping();
-    check('الاتصال بـ demo-fapi.binance.com', JSON.stringify(pingResult) === '{}', pingResult);
-
-    const account = await trade.getAccountInfo();
-    check('التحقق من الحساب', !!account?.totalWalletBalance, {
-      totalWalletBalance: account?.totalWalletBalance,
-      canTrade: account?.canTrade,
-    });
-
-    if (!wantsLiveTest) {
-      check('الوضع الحالي', true, 'قراءة فقط — أضِف &confirm=yes-place-order&symbol=ETHUSDT لاختبار تنفيذ حقيقي');
-      const allOk = results.every((r) => r.ok !== false);
+    if (!wantsTest) {
       res.status(200).end(JSON.stringify({
-        summary: allOk ? '✅ فحص القراءة نجح — لم يُنفَّذ أي أمر بعد' : '⚠️ مشكلة — راجع التفاصيل',
-        allOk, results,
+        summary: 'أضِف &confirm=yes-test-sltp&symbol=ETHUSDT لتشغيل اختبار وقف الخسارة/هدف الربح',
+        allOk: true, results: [],
       }, null, 2));
       return;
     }
 
-    /* ---------------- ⚠️ القفل الذري الحقيقي ---------------- */
     lockAcquired = await tryAcquireLock(lockKey);
     if (!lockAcquired) {
-      check('حجز القفل الذري', false, {
-        message: `⛔ طلب آخر يحمل القفل على ${SYMBOL} بالفعل حالياً — تم رفض هذا الطلب فوراً من قاعدة البيانات نفسها`,
-        lockKey,
-      });
-      res.status(200).end(JSON.stringify({
-        summary: '⛔ تم رفض التنفيذ من طرف القفل الذري — طلب مكرر مُكتشَف بيقين رياضي',
-        allOk: false, results,
-      }, null, 2));
+      check('حجز القفل الذري', false, `⛔ طلب آخر يحمل القفل على ${SYMBOL} بالفعل`);
+      res.status(200).end(JSON.stringify({ summary: '⛔ مرفوض — قفل محجوز', allOk: false, results }, null, 2));
       return;
     }
-    check('حجز القفل الذري', true, `تم حجز القفل بنجاح على ${SYMBOL} — لا طلب آخر يستطيع التنفيذ الآن`);
+    check('حجز القفل الذري', true, `تم حجز القفل على ${SYMBOL}`);
 
-    /* ---------------- الاختبار التنفيذي ---------------- */
+    // ١) فتح مركز صغير (نفس منطق مُختبَر سابقاً)
     const exchangeInfo = await trade.publicRequest('/fapi/v1/exchangeInfo');
     const symbolInfo = exchangeInfo.symbols.find((s) => s.symbol === SYMBOL);
-    if (!symbolInfo) throw new Error(`لم يوجد الرمز ${SYMBOL} في exchangeInfo`);
-
     const lotSize = symbolInfo.filters.find((f) => f.filterType === 'LOT_SIZE');
     const minNotionalFilter = symbolInfo.filters.find((f) => f.filterType === 'MIN_NOTIONAL');
+    const pricePrecision = symbolInfo.pricePrecision;
     const stepSize = parseFloat(lotSize.stepSize);
     const minQty = parseFloat(lotSize.minQty);
     const minNotional = parseFloat(minNotionalFilter?.notional || '5');
 
     const priceData = await trade.publicRequest(`/fapi/v1/ticker/price?symbol=${SYMBOL}`);
-    const currentPrice = parseFloat(priceData.price);
+    const entryPrice = parseFloat(priceData.price);
 
-    const rawQty = minNotional / currentPrice;
+    const rawQty = minNotional / entryPrice;
     const steps = Math.ceil(rawQty / stepSize);
-    let qty = Math.max(steps * stepSize, minQty);
-    const decimals = (stepSize.toString().split('.')[1] || '').length;
-    qty = Number(qty.toFixed(decimals));
-
-    check('حساب أصغر كمية مسموحة', qty > 0, {
-      symbol: SYMBOL, currentPrice, computedQty: qty,
-      estimatedValueUSD: Number((qty * currentPrice).toFixed(2)),
-    });
+    qty = Math.max(steps * stepSize, minQty);
+    const qDecimals = (stepSize.toString().split('.')[1] || '').length;
+    qty = Number(qty.toFixed(qDecimals));
 
     const buyOrder = await trade.signedRequest('POST', '/fapi/v1/order', {
       symbol: SYMBOL, side: 'BUY', type: 'MARKET', quantity: qty,
     });
-    check('تنفيذ أمر الشراء', buyOrder?.orderId != null, {
-      orderId: buyOrder?.orderId, origQty: buyOrder?.origQty, status: buyOrder?.status,
-    });
+    check('فتح المركز', buyOrder?.orderId != null, { orderId: buyOrder?.orderId, qty });
 
     await new Promise((r) => setTimeout(r, 800));
-    const positionsAfterBuy = await trade.getPositions();
-    const openPos = positionsAfterBuy.find((p) => p.symbol === SYMBOL && Number(p.positionAmt) !== 0);
-    check('تأكيد فتح المركز فعلياً', !!openPos, openPos
-      ? { positionAmt: openPos.positionAmt, entryPrice: openPos.entryPrice }
-      : 'لم يظهر مركز مفتوح بعد الشراء');
 
-    const sellOrder = await trade.signedRequest('POST', '/fapi/v1/order', {
-      symbol: SYMBOL, side: 'SELL', type: 'MARKET', quantity: qty, reduceOnly: 'true',
+    // ٢) حساب مستويات وقف/هدف بسيطة (١٪ للاختبار فقط — لا النسب النهائية بعد)
+    const stopPrice = Number((entryPrice * 0.99).toFixed(pricePrecision));   // ١٪ تحت الدخول
+    const targetPrice = Number((entryPrice * 1.01).toFixed(pricePrecision)); // ١٪ فوق الدخول
+
+    // ٣) وقف الخسارة كأمر فعلي مستقل على باينس — closePosition يغلق كامل المركز تلقائياً
+    const stopOrder = await trade.signedRequest('POST', '/fapi/v1/order', {
+      symbol: SYMBOL, side: 'SELL', type: 'STOP_MARKET',
+      stopPrice, closePosition: 'true',
     });
-    check('تنفيذ أمر الإغلاق', sellOrder?.orderId != null, {
-      orderId: sellOrder?.orderId, origQty: sellOrder?.origQty, status: sellOrder?.status,
+    check('وضع أمر وقف الخسارة (STOP_MARKET)', stopOrder?.orderId != null, {
+      orderId: stopOrder?.orderId, stopPrice, type: stopOrder?.type,
     });
 
-    await new Promise((r) => setTimeout(r, 800));
-    const positionsAfterSell = await trade.getPositions();
-    const stillOpen = positionsAfterSell.find((p) => p.symbol === SYMBOL && Number(p.positionAmt) !== 0);
-    check('تأكيد إغلاق المركز', !stillOpen, stillOpen || 'المركز مغلق بنجاح — لا كمية متبقية');
+    // ٤) هدف الربح كأمر فعلي مستقل آخر
+    const targetOrder = await trade.signedRequest('POST', '/fapi/v1/order', {
+      symbol: SYMBOL, side: 'SELL', type: 'TAKE_PROFIT_MARKET',
+      stopPrice: targetPrice, closePosition: 'true',
+    });
+    check('وضع أمر هدف الربح (TAKE_PROFIT_MARKET)', targetOrder?.orderId != null, {
+      orderId: targetOrder?.orderId, targetPrice, type: targetOrder?.type,
+    });
+
+    // ٥) التحقق الحاسم: هل الأمران يظهران فعلياً كأوامر معلّقة على باينس نفسها؟
+    await new Promise((r) => setTimeout(r, 600));
+    const openOrders = await trade.signedRequest('GET', '/fapi/v1/openOrders', { symbol: SYMBOL });
+    const foundStop = openOrders.find((o) => o.orderId === stopOrder?.orderId);
+    const foundTarget = openOrders.find((o) => o.orderId === targetOrder?.orderId);
+    check('تأكيد ظهور الأمرين كأوامر معلّقة حقيقية على باينس', !!foundStop && !!foundTarget, {
+      totalOpenOrders: openOrders.length,
+      stopOrderVisible: !!foundStop, targetOrderVisible: !!foundTarget,
+      stopOrderStatus: foundStop?.status, targetOrderStatus: foundTarget?.status,
+    });
+
+    // ٦) تنظيف: نُلغي الأمرين المعلّقين، ثم نغلق المركز يدوياً (لا ننتظر السعر الحقيقي)
+    await trade.signedRequest('DELETE', '/fapi/v1/allOpenOrders', { symbol: SYMBOL });
+    check('إلغاء الأمرين المعلّقين (تنظيف الاختبار)', true, 'أُلغيا بنجاح — كانا اختباراً، لا مقصودَين للبقاء');
+
+    const positionsNow = await trade.getPositions();
+    const stillOpenPos = positionsNow.find((p) => p.symbol === SYMBOL && Number(p.positionAmt) !== 0);
+    if (stillOpenPos) {
+      const closeOrder = await trade.signedRequest('POST', '/fapi/v1/order', {
+        symbol: SYMBOL, side: 'SELL', type: 'MARKET', quantity: qty, reduceOnly: 'true',
+      });
+      check('إغلاق المركز يدوياً (تنظيف نهائي)', closeOrder?.orderId != null, { orderId: closeOrder?.orderId });
+    } else {
+      check('إغلاق المركز يدوياً', true, 'لم يكن هناك مركز مفتوح للإغلاق — غير متوقع لكن آمن');
+    }
 
     const allOk = results.every((r) => r.ok !== false);
     res.status(200).end(JSON.stringify({
       summary: allOk
-        ? `✅ اختبار التنفيذ نجح على ${SYMBOL} — محمي بقفل ذري حقيقي، لا تكرار ممكن`
+        ? '✅ وقف الخسارة وهدف الربح يعملان كأوامر فعلية حقيقية على باينس — مؤكَّد'
         : '⚠️ توجد مشكلة — راجع التفاصيل',
       allOk, results,
     }, null, 2));
   } catch (e) {
     results.push({ name: 'خطأ عام', ok: false, detail: { message: e.message } });
+    // محاولة تنظيف طارئة إن فشل شيء في المنتصف
+    try {
+      await trade.signedRequest('DELETE', '/fapi/v1/allOpenOrders', { symbol: SYMBOL });
+      const pos = await trade.getPositions();
+      const openPos = pos.find((p) => p.symbol === SYMBOL && Number(p.positionAmt) !== 0);
+      if (openPos && qty) {
+        await trade.signedRequest('POST', '/fapi/v1/order', {
+          symbol: SYMBOL, side: 'SELL', type: 'MARKET', quantity: qty, reduceOnly: 'true',
+        });
+      }
+      results.push({ name: 'تنظيف طارئ بعد الخطأ', ok: true, detail: 'حاولنا إغلاق كل شيء بأمان رغم الخطأ' });
+    } catch (cleanupErr) {
+      results.push({ name: 'تنظيف طارئ فشل أيضاً', ok: false, detail: {
+        message: cleanupErr.message,
+        warning: '⚠️ قد يبقى مركز أو أمر مفتوح — تحقق يدوياً من demo.binance.com فوراً',
+      }});
+    }
     res.status(200).end(JSON.stringify({ summary: '❌ فشل الاختبار', allOk: false, results }, null, 2));
   } finally {
-    // ⚠️ نُحرّر القفل دائماً، حتى لو حدث خطأ — وإلا يبقى محجوزاً للأبد
     if (lockAcquired) { try { await releaseLock(lockKey); } catch { /* غير حرج */ } }
   }
 };
