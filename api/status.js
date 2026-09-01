@@ -26,12 +26,38 @@ async function sb(path, options = {}) {
   });
   return { ok: res.ok, status: res.status };
 }
+/**
+ * ⚠️ إصلاح إضافي بعد اكتشاف حقيقي: قفل بلا صلاحية زمنية قد "يعلق" للأبد
+ * إن قُتلت الدالة في المنتصف (تجاوز حد Vercel ١٠ ثوانٍ) قبل الوصول
+ * لسطر التحرير. الحل: قفل "ذكي" — يرفض التزامن الحقيقي القريب (أقل من
+ * ٣٠ ثانية)، لكن يتعافى تلقائياً من قفل أقدم من ذلك (على الأرجح عالق).
+ */
+const STALE_LOCK_MS = 30000;
+
 async function tryAcquireLock(lockKey) {
-  const r = await sb('trade_locks', {
+  const insertResult = await sb('trade_locks', {
     method: 'POST', headers: { prefer: 'return=minimal' },
     body: JSON.stringify([{ lock_key: lockKey }]),
   });
-  return r.ok;
+  if (insertResult.ok) return true; // لا قفل موجود مسبقاً — نجحنا فوراً
+
+  // فشل الإدراج (القفل موجود) — نتحقق: هل هو قديم بما يكفي ليكون عالقاً؟
+  const res = await fetch(`${SB_URL}/rest/v1/trade_locks?lock_key=eq.${encodeURIComponent(lockKey)}&select=created_at`, {
+    headers: { apikey: SB_KEY, authorization: `Bearer ${SB_KEY}` },
+  });
+  const data = await res.json();
+  const createdAt = data?.[0]?.created_at ? new Date(data[0].created_at).getTime() : null;
+  const age = createdAt ? Date.now() - createdAt : Infinity;
+
+  if (age < STALE_LOCK_MS) return false; // تزامن حقيقي قريب — رفض حقيقي
+
+  // قفل قديم جداً — على الأرجح عالق من دالة سابقة ماتت في المنتصف. نحرره ونحاول مجدداً
+  await releaseLock(lockKey);
+  const retryResult = await sb('trade_locks', {
+    method: 'POST', headers: { prefer: 'return=minimal' },
+    body: JSON.stringify([{ lock_key: lockKey }]),
+  });
+  return retryResult.ok;
 }
 async function releaseLock(lockKey) {
   await sb(`trade_locks?lock_key=eq.${encodeURIComponent(lockKey)}`, { method: 'DELETE' });
@@ -90,7 +116,7 @@ module.exports = async (req, res) => {
     });
     check('فتح المركز', buyOrder?.orderId != null, { orderId: buyOrder?.orderId, qty });
 
-    await new Promise((r) => setTimeout(r, 800));
+    await new Promise((r) => setTimeout(r, 400));
 
     // ٢) حساب مستويات وقف/هدف بسيطة (١٪ للاختبار فقط — لا النسب النهائية بعد)
     const stopPrice = Number((entryPrice * 0.99).toFixed(pricePrecision));   // ١٪ تحت الدخول
@@ -115,7 +141,7 @@ module.exports = async (req, res) => {
     });
 
     // ٥) التحقق الحاسم: هل الأمران يظهران فعلياً كأوامر معلّقة على باينس نفسها؟
-    await new Promise((r) => setTimeout(r, 600));
+    await new Promise((r) => setTimeout(r, 300));
     const openOrders = await trade.signedRequest('GET', '/fapi/v1/openOrders', { symbol: SYMBOL });
     const foundStop = openOrders.find((o) => o.orderId === stopOrder?.orderId);
     const foundTarget = openOrders.find((o) => o.orderId === targetOrder?.orderId);
