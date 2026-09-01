@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>إعدادات البوت — مرصد المتداولين</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@500;700;800&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A0F1A; --card:#111A2B; --card-2:#0E1626; --line:#1D2A40;
+    --text:#E3EBF5; --muted:#8296AF; --dim:#5C6E86;
+    --jade:#2FBF9A; --rust:#E8664A; --amber:#D9A441;
+    --r:12px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg); color:var(--text);
+    font-family:"IBM Plex Sans Arabic",system-ui,sans-serif; font-size:15px; line-height:1.6}
+  h1,h2,h3{font-family:"Tajawal",sans-serif; margin:0}
+  .wrap{max-width:520px;margin:0 auto;padding:20px 16px 60px}
+
+  .login{margin-top:60px; padding:28px 22px; border-radius:14px; background:var(--card);
+    border:1px solid var(--line); text-align:center}
+  .login h1{font-size:19px; font-weight:800; margin-bottom:8px}
+  .login p{font-size:12.5px; color:var(--dim); margin:0 0 18px; line-height:1.8}
+  .login input{width:100%; background:#0C1524; border:1px solid var(--line);
+    color:var(--text); padding:13px 14px; border-radius:9px; font:inherit; font-size:15px;
+    font-family:"IBM Plex Mono",monospace; direction:ltr; text-align:center}
+  .login input:focus{outline:none; border-color:var(--amber)}
+  .login button{width:100%; margin-top:12px; background:var(--amber); color:#15100A;
+    border:0; padding:13px; border-radius:9px; font:inherit; font-weight:700; font-size:15px; cursor:pointer}
+  .login .err{margin-top:10px; font-size:12.5px; color:var(--rust)}
+
+  header{padding:8px 0 4px}
+  header h1{font-size:19px; font-weight:800}
+  header span{display:block; margin-top:3px; font-size:12px; color:var(--dim)}
+
+  .power-card{margin-top:18px; border-radius:14px; overflow:hidden;
+    border:1px solid var(--line); background:var(--card)}
+  .power-card.on{border-color:#1F6B54}
+  .power-head{padding:18px; display:flex; align-items:center; gap:14px}
+  .power-dot{width:12px; height:12px; border-radius:50%; background:var(--dim); flex:none}
+  .power-card.on .power-dot{background:var(--jade); box-shadow:0 0 10px rgba(47,191,154,.6)}
+  .power-text{flex:1}
+  .power-text b{display:block; font-size:16px; font-weight:800}
+  .power-text span{font-size:12px; color:var(--dim)}
+  .switch{position:relative; width:52px; height:30px; flex:none}
+  .switch input{opacity:0; width:0; height:0}
+  .slider{position:absolute; inset:0; background:#2A3548; border-radius:30px; cursor:pointer; transition:.2s}
+  .slider::before{content:""; position:absolute; width:24px; height:24px; right:3px; top:3px;
+    background:#fff; border-radius:50%; transition:.2s}
+  input:checked + .slider{background:var(--jade)}
+  input:checked + .slider::before{transform:translateX(-22px)}
+  .power-note{padding:0 18px 18px; font-size:12px; color:var(--dim); line-height:1.85}
+  .power-note b{color:var(--text)}
+
+  .section{margin-top:18px; border-radius:14px; background:var(--card); border:1px solid var(--line); overflow:hidden}
+  .section-head{padding:14px 18px; border-bottom:1px solid var(--line)}
+  .section-head h2{font-size:14.5px; font-weight:700}
+  .section-head p{margin:4px 0 0; font-size:11.5px; color:var(--dim); line-height:1.7}
+  .field{padding:14px 18px; border-bottom:1px solid #16223455}
+  .field:last-child{border-bottom:0}
+  .field label{display:block; font-size:13px; font-weight:600; margin-bottom:3px}
+  .field .hint{font-size:11.5px; color:var(--dim); margin-bottom:9px; line-height:1.7}
+  .field input{width:100%; background:#0C1524; border:1px solid var(--line); color:var(--text);
+    padding:11px 13px; border-radius:9px; font:inherit; font-size:15px;
+    font-family:"IBM Plex Mono",monospace; direction:ltr}
+  .field input:focus{outline:none; border-color:var(--amber)}
+  .field .computed{margin-top:8px; font-size:12px; color:var(--amber); font-family:"IBM Plex Mono",monospace; direction:ltr}
+
+  .save-bar{position:sticky; bottom:0; margin-top:18px; padding:14px 0;
+    background:linear-gradient(180deg,transparent,var(--bg) 30%)}
+  .save-btn{width:100%; background:var(--amber); color:#15100A; border:0; padding:15px;
+    border-radius:11px; font:inherit; font-weight:700; font-size:15.5px; cursor:pointer}
+  .save-btn:disabled{opacity:.6}
+  .status-msg{margin-top:10px; padding:11px 14px; border-radius:9px; font-size:12.5px; text-align:center}
+  .status-msg.ok{background:#10261F; color:#7FD9BF}
+  .status-msg.err{background:#3A1B16; color:#F0A997}
+
+  .warn-box{margin-top:18px; padding:14px 16px; border-radius:12px; background:#241B0C;
+    border:1px solid #453413; color:#E8C77E; font-size:12px; line-height:1.9}
+  .warn-box b{color:#FFDFA0}
+</style>
+</head>
+<body>
+
+<div class="wrap" id="app">
+  <div class="login" id="loginScreen">
+    <h1>🔒 إعدادات البوت</h1>
+    <p>هذه لوحة تحكم منفصلة تماماً عن مفتاحك العادي —<br>مخصصة فقط لإعدادات التداول الآلي.</p>
+    <input id="adminKeyInput" type="password" placeholder="المفتاح الإداري" autocomplete="off">
+    <button id="btnLogin">دخول</button>
+    <div class="err" id="loginErr"></div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+let adminKey = '';
+
+function loginScreen(errMsg){
+  return `
+  <div class="login">
+    <h1>🔒 إعدادات البوت</h1>
+    <p>هذه لوحة تحكم منفصلة تماماً عن مفتاحك العادي —<br>مخصصة فقط لإعدادات التداول الآلي.</p>
+    <input id="adminKeyInput" type="password" placeholder="المفتاح الإداري" autocomplete="off">
+    <button id="btnLogin">دخول</button>
+    ${errMsg ? `<div class="err">${errMsg}</div>` : ''}
+  </div>`;
+}
+
+function bindLogin(){
+  const inp = $('#adminKeyInput'), btn = $('#btnLogin');
+  const tryLogin = async () => {
+    const v = (inp.value || '').trim();
+    if(!v) return;
+    btn.disabled = true; btn.textContent = '...';
+    try{
+      const res = await fetch('/api/botsettings?key=' + encodeURIComponent(v));
+      const d = await res.json();
+      if(!res.ok || !d.ok) throw new Error(d.error || 'مفتاح غير صحيح');
+      adminKey = v;
+      renderSettings(d.settings);
+    }catch(e){
+      $('#app').innerHTML = loginScreen(e.message);
+      bindLogin();
+    }
+  };
+  btn.onclick = tryLogin;
+  inp.addEventListener('keydown', e => { if(e.key==='Enter') tryLogin(); });
+  inp.focus();
+}
+
+function fmtPriceMove(pct, leverage){
+  if(!leverage || leverage <= 0) return '—';
+  return (pct/leverage).toFixed(2) + '% حركة سعرية فعلية';
+}
+
+function renderSettings(s){
+  $('#app').innerHTML = `
+    <header>
+      <h1>إعدادات البوت</h1>
+      <span>مرصد المتداولين — تداول تجريبي (Demo Trading)</span>
+    </header>
+
+    <div class="power-card ${s.enabled?'on':''}" id="powerCard">
+      <div class="power-head">
+        <div class="power-dot"></div>
+        <div class="power-text">
+          <b>${s.enabled ? 'البوت يعمل الآن' : 'البوت متوقف'}</b>
+          <span>${s.enabled ? 'يدخل صفقات تلقائياً عند اكتشاف فتح مركز' : 'لا يدخل أي صفقة حتى تُفعّله'}</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="enabledToggle" ${s.enabled?'checked':''}>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="power-note">
+        <b>تذكير:</b> تعديل النسب أدناه لا يؤثر أبداً على مركز مفتوح بالفعل —
+        يُطبَّق فقط على أي دخول جديد بعد الحفظ.
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <h2>حجم المركز والرافعة</h2>
+      </div>
+      <div class="field">
+        <label>نسبة الهامش من الرصيد الحالي</label>
+        <div class="hint">مثال: 10 تعني أن كل صفقة تستخدم 10٪ من رصيدك المتبقي وقتها، لا الأصلي.</div>
+        <input type="number" id="position_pct" value="${s.position_pct}" min="0.1" max="100" step="0.1">
+      </div>
+      <div class="field">
+        <label>الرافعة الثابتة</label>
+        <div class="hint">تُستخدم دائماً بهذا الرقم — لا علاقة لها برافعة المتداول المتابَع.</div>
+        <input type="number" id="leverage" value="${s.leverage}" min="1" max="125" step="1">
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <h2>وقف الخسارة وهدف الربح</h2>
+        <p>نسبة٪ من الهامش نفسه — تتحول لحركة سعرية أصغر تلقائياً حسب الرافعة أعلاه.</p>
+      </div>
+      <div class="field">
+        <label>وقف الخسارة (٪ من الهامش)</label>
+        <input type="number" id="stop_loss_pct" value="${s.stop_loss_pct}" min="0.1" max="100" step="0.1">
+        <div class="computed" id="stopComputed"></div>
+      </div>
+      <div class="field">
+        <label>هدف الربح (٪ من الهامش)</label>
+        <input type="number" id="take_profit_pct" value="${s.take_profit_pct}" min="0.1" step="0.1">
+        <div class="computed" id="targetComputed"></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <h2>الحد الأقصى للمراكز المتزامنة</h2>
+        <p>عدد الصفقات المفتوحة معاً كحد أقصى، بصرف النظر عن العملة.</p>
+      </div>
+      <div class="field">
+        <input type="number" id="max_concurrent_positions" value="${s.max_concurrent_positions}" min="1" max="20" step="1">
+      </div>
+    </div>
+
+    <div class="warn-box">
+      ⚠️ حساب تجريبي (Demo Trading) بمال وهمي — لكن المنطق نفسه سيُستخدم لاحقاً بمالك الحقيقي.
+      راجع الأرقام بعناية قبل كل حفظ.
+    </div>
+
+    <div class="save-bar">
+      <button class="save-btn" id="saveBtn">حفظ الإعدادات</button>
+      <div id="statusMsg"></div>
+    </div>
+  `;
+  bindSettingsForm(s);
+}
+
+function bindSettingsForm(initial){
+  const updateComputed = () => {
+    const lev = parseFloat($('#leverage').value) || 0;
+    const stop = parseFloat($('#stop_loss_pct').value) || 0;
+    const target = parseFloat($('#take_profit_pct').value) || 0;
+    $('#stopComputed').textContent = lev ? '≈ ' + fmtPriceMove(stop, lev) : '';
+    $('#targetComputed').textContent = lev ? '≈ ' + fmtPriceMove(target, lev) : '';
+  };
+  ['leverage','stop_loss_pct','take_profit_pct'].forEach(id => {
+    $('#'+id).addEventListener('input', updateComputed);
+  });
+  updateComputed();
+
+  $('#enabledToggle').addEventListener('change', function(){
+    $('#powerCard').classList.toggle('on', this.checked);
+    $('#powerCard').querySelector('.power-text b').textContent = this.checked ? 'البوت يعمل الآن' : 'البوت متوقف';
+    $('#powerCard').querySelector('.power-text span').textContent = this.checked
+      ? 'يدخل صفقات تلقائياً عند اكتشاف فتح مركز' : 'لا يدخل أي صفقة حتى تُفعّله';
+  });
+
+  $('#saveBtn').onclick = async () => {
+    const btn = $('#saveBtn');
+    const payload = {
+      enabled: $('#enabledToggle').checked,
+      position_pct: parseFloat($('#position_pct').value),
+      leverage: parseInt($('#leverage').value, 10),
+      stop_loss_pct: parseFloat($('#stop_loss_pct').value),
+      take_profit_pct: parseFloat($('#take_profit_pct').value),
+      max_concurrent_positions: parseInt($('#max_concurrent_positions').value, 10),
+    };
+    btn.disabled = true; btn.textContent = 'جارٍ الحفظ...';
+    $('#statusMsg').innerHTML = '';
+    try{
+      const res = await fetch('/api/botsettings?key=' + encodeURIComponent(adminKey), {
+        method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify(payload),
+      });
+      const d = await res.json();
+      if(!res.ok || !d.ok) throw new Error((d.errors||[d.error]).join('، '));
+      $('#statusMsg').innerHTML = '<div class="status-msg ok">✅ حُفظت الإعدادات بنجاح</div>';
+    }catch(e){
+      $('#statusMsg').innerHTML = `<div class="status-msg err">❌ ${e.message}</div>`;
+    }
+    btn.disabled = false; btn.textContent = 'حفظ الإعدادات';
+  };
+}
+
+bindLogin();
+</script>
+</body>
+</html>
