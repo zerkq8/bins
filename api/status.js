@@ -75,7 +75,7 @@ module.exports = async (req, res) => {
   let lockAcquired = false;
   let qty = null;
 
-  const CODE_VERSION = 'sltp-v3-algoOrder-2026-09-01-final';
+  const CODE_VERSION = 'sltp-v5-algoType-triggerPrice-fix';
 
   try {
     if (!wantsTest) {
@@ -133,16 +133,16 @@ module.exports = async (req, res) => {
      * باينس نفسها، موثّق رسمياً، لا خطأ في منطقنا.
      */
     const stopOrder = await trade.signedRequest('POST', '/fapi/v1/algoOrder', {
-      symbol: SYMBOL, side: 'SELL', type: 'STOP_MARKET',
-      stopPrice, closePosition: 'true',
+      symbol: SYMBOL, side: 'SELL', type: 'STOP_MARKET', algoType: 'CONDITIONAL',
+      triggerPrice: stopPrice, closePosition: 'true',
     });
     check('وضع أمر وقف الخسارة (STOP_MARKET عبر Algo API)', stopOrder?.algoId != null, {
       algoId: stopOrder?.algoId, stopPrice, type: stopOrder?.type,
     });
 
     const targetOrder = await trade.signedRequest('POST', '/fapi/v1/algoOrder', {
-      symbol: SYMBOL, side: 'SELL', type: 'TAKE_PROFIT_MARKET',
-      stopPrice: targetPrice, closePosition: 'true',
+      symbol: SYMBOL, side: 'SELL', type: 'TAKE_PROFIT_MARKET', algoType: 'CONDITIONAL',
+      triggerPrice: targetPrice, closePosition: 'true',
     });
     check('وضع أمر هدف الربح (TAKE_PROFIT_MARKET عبر Algo API)', targetOrder?.algoId != null, {
       algoId: targetOrder?.algoId, targetPrice, type: targetOrder?.type,
