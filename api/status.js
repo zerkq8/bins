@@ -122,37 +122,47 @@ module.exports = async (req, res) => {
     const stopPrice = Number((entryPrice * 0.99).toFixed(pricePrecision));   // ١٪ تحت الدخول
     const targetPrice = Number((entryPrice * 1.01).toFixed(pricePrecision)); // ١٪ فوق الدخول
 
-    // ٣) وقف الخسارة كأمر فعلي مستقل على باينس — closePosition يغلق كامل المركز تلقائياً
-    const stopOrder = await trade.signedRequest('POST', '/fapi/v1/order', {
+    /**
+     * ⚠️ إصلاح حرج بعد اكتشاف حقيقي: باينس نقلت الأوامر الشرطية
+     * (STOP_MARKET/TAKE_PROFIT_MARKET) إلزامياً لنقطة API جديدة
+     * (/fapi/v1/algoOrder) اعتباراً من 2025-12-09 — النقطة القديمة
+     * (/fapi/v1/order) ترفضها الآن صراحة بخطأ -4120. هذا تغيير من
+     * باينس نفسها، موثّق رسمياً، لا خطأ في منطقنا.
+     */
+    const stopOrder = await trade.signedRequest('POST', '/fapi/v1/algoOrder', {
       symbol: SYMBOL, side: 'SELL', type: 'STOP_MARKET',
       stopPrice, closePosition: 'true',
     });
-    check('وضع أمر وقف الخسارة (STOP_MARKET)', stopOrder?.orderId != null, {
-      orderId: stopOrder?.orderId, stopPrice, type: stopOrder?.type,
+    check('وضع أمر وقف الخسارة (STOP_MARKET عبر Algo API)', stopOrder?.algoId != null, {
+      algoId: stopOrder?.algoId, stopPrice, type: stopOrder?.type,
     });
 
-    // ٤) هدف الربح كأمر فعلي مستقل آخر
-    const targetOrder = await trade.signedRequest('POST', '/fapi/v1/order', {
+    const targetOrder = await trade.signedRequest('POST', '/fapi/v1/algoOrder', {
       symbol: SYMBOL, side: 'SELL', type: 'TAKE_PROFIT_MARKET',
       stopPrice: targetPrice, closePosition: 'true',
     });
-    check('وضع أمر هدف الربح (TAKE_PROFIT_MARKET)', targetOrder?.orderId != null, {
-      orderId: targetOrder?.orderId, targetPrice, type: targetOrder?.type,
+    check('وضع أمر هدف الربح (TAKE_PROFIT_MARKET عبر Algo API)', targetOrder?.algoId != null, {
+      algoId: targetOrder?.algoId, targetPrice, type: targetOrder?.type,
     });
 
-    // ٥) التحقق الحاسم: هل الأمران يظهران فعلياً كأوامر معلّقة على باينس نفسها؟
+    // ٥) التحقق الحاسم: هل الأمران يظهران فعلياً كأوامر شرطية معلّقة على باينس؟
     await new Promise((r) => setTimeout(r, 300));
-    const openOrders = await trade.signedRequest('GET', '/fapi/v1/openOrders', { symbol: SYMBOL });
-    const foundStop = openOrders.find((o) => o.orderId === stopOrder?.orderId);
-    const foundTarget = openOrders.find((o) => o.orderId === targetOrder?.orderId);
-    check('تأكيد ظهور الأمرين كأوامر معلّقة حقيقية على باينس', !!foundStop && !!foundTarget, {
-      totalOpenOrders: openOrders.length,
+    const openAlgoOrders = await trade.signedRequest('GET', '/fapi/v1/openAlgoOrders', { symbol: SYMBOL });
+    const algoList = Array.isArray(openAlgoOrders) ? openAlgoOrders : (openAlgoOrders?.algoOrders || []);
+    const foundStop = algoList.find((o) => o.algoId === stopOrder?.algoId);
+    const foundTarget = algoList.find((o) => o.algoId === targetOrder?.algoId);
+    check('تأكيد ظهور الأمرين كأوامر شرطية معلّقة حقيقية على باينس', !!foundStop && !!foundTarget, {
+      totalOpenAlgoOrders: algoList.length,
       stopOrderVisible: !!foundStop, targetOrderVisible: !!foundTarget,
-      stopOrderStatus: foundStop?.status, targetOrderStatus: foundTarget?.status,
     });
 
-    // ٦) تنظيف: نُلغي الأمرين المعلّقين، ثم نغلق المركز يدوياً (لا ننتظر السعر الحقيقي)
-    await trade.signedRequest('DELETE', '/fapi/v1/allOpenOrders', { symbol: SYMBOL });
+    // ٦) تنظيف: نُلغي الأمرين الشرطيين واحداً واحداً بمعرّف algoId (الطريقة المؤكدة رسمياً)
+    if (stopOrder?.algoId) {
+      await trade.signedRequest('DELETE', '/fapi/v1/algoOrder', { algoId: stopOrder.algoId });
+    }
+    if (targetOrder?.algoId) {
+      await trade.signedRequest('DELETE', '/fapi/v1/algoOrder', { algoId: targetOrder.algoId });
+    }
     check('إلغاء الأمرين المعلّقين (تنظيف الاختبار)', true, 'أُلغيا بنجاح — كانا اختباراً، لا مقصودَين للبقاء');
 
     const positionsNow = await trade.getPositions();
