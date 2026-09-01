@@ -8,6 +8,8 @@
  * GET  /api/botsettings?key=المفتاح_الإداري          → قراءة الإعدادات الحالية
  * POST /api/botsettings?key=المفتاح_الإداري            → تحديثها (body: JSON)
  */
+const { emergencyStopAll } = require('../lib/botTrade');
+
 const SB_URL = process.env.SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_KEY;
 const ADMIN_KEY = (process.env.BOT_ADMIN_KEY || '').trim();
@@ -61,6 +63,19 @@ module.exports = async (req, res) => {
 
     if (req.method === 'POST') {
       const body = await readBody(req);
+
+      // ⚠️ الإغلاق الطارئ الكامل — مسار منفصل تماماً عن حفظ الإعدادات العادي
+      if (body.action === 'emergency_stop') {
+        // نُوقف البوت فوراً أولاً (منع أي دخول جديد أثناء عملية الإغلاق)
+        await sb('bot_settings?id=eq.1', {
+          method: 'PATCH', headers: { prefer: 'return=minimal' },
+          body: JSON.stringify({ enabled: false, updated_at: new Date().toISOString() }),
+        });
+        const result = await emergencyStopAll();
+        res.status(200).end(JSON.stringify({ ok: true, emergencyResult: result }));
+        return;
+      }
+
       const settings = {
         enabled: !!body.enabled,
         position_pct: Number(body.position_pct),
