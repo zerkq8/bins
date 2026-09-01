@@ -10,7 +10,7 @@
  */
 const SB_URL = process.env.SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_KEY;
-const ADMIN_KEY = process.env.BOT_ADMIN_KEY;
+const ADMIN_KEY = (process.env.BOT_ADMIN_KEY || '').trim();
 
 async function sb(path, options = {}) {
   const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
