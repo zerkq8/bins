@@ -75,10 +75,13 @@ module.exports = async (req, res) => {
   let lockAcquired = false;
   let qty = null;
 
+  const CODE_VERSION = 'sltp-v3-algoOrder-2026-09-01-final';
+
   try {
     if (!wantsTest) {
       res.status(200).end(JSON.stringify({
-        summary: 'أضِف &confirm=yes-test-sltp&symbol=ETHUSDT لتشغيل اختبار وقف الخسارة/هدف الربح',
+        codeVersion: CODE_VERSION,
+        summary: 'أضِف &confirm=yes-test-sltp&symbol=ETHUSDT لتشغيل اختبار وقف الخسارة/هدف الربح — تحقق من codeVersion أعلاه أولاً',
         allOk: true, results: [],
       }, null, 2));
       return;
@@ -87,7 +90,7 @@ module.exports = async (req, res) => {
     lockAcquired = await tryAcquireLock(lockKey);
     if (!lockAcquired) {
       check('حجز القفل الذري', false, `⛔ طلب آخر يحمل القفل على ${SYMBOL} بالفعل`);
-      res.status(200).end(JSON.stringify({ summary: '⛔ مرفوض — قفل محجوز', allOk: false, results }, null, 2));
+      res.status(200).end(JSON.stringify({ codeVersion: CODE_VERSION, summary: '⛔ مرفوض — قفل محجوز', allOk: false, results }, null, 2));
       return;
     }
     check('حجز القفل الذري', true, `تم حجز القفل على ${SYMBOL}`);
@@ -178,6 +181,7 @@ module.exports = async (req, res) => {
 
     const allOk = results.every((r) => r.ok !== false);
     res.status(200).end(JSON.stringify({
+      codeVersion: CODE_VERSION,
       summary: allOk
         ? '✅ وقف الخسارة وهدف الربح يعملان كأوامر فعلية حقيقية على باينس — مؤكَّد'
         : '⚠️ توجد مشكلة — راجع التفاصيل',
@@ -202,7 +206,7 @@ module.exports = async (req, res) => {
         warning: '⚠️ قد يبقى مركز أو أمر مفتوح — تحقق يدوياً من demo.binance.com فوراً',
       }});
     }
-    res.status(200).end(JSON.stringify({ summary: '❌ فشل الاختبار', allOk: false, results }, null, 2));
+    res.status(200).end(JSON.stringify({ codeVersion: CODE_VERSION, summary: '❌ فشل الاختبار', allOk: false, results }, null, 2));
   } finally {
     if (lockAcquired) { try { await releaseLock(lockKey); } catch { /* غير حرج */ } }
   }
