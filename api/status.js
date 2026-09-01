@@ -2,16 +2,55 @@
  * api/tradetest.js
  * ⚠️ يستبدل api/status.js مؤقتاً — يعيد لأصله بعد الاستخدام.
  *
- * تحديث مهم بعد اكتشاف حقيقي: أُضيفت حماية "لا مركز مكرر على نفس
- * العملة" — قبل أي شراء، نتحقق أولاً هل يوجد مركز مفتوح بالفعل على
- * نفس الرمز. إن وُجد، نتوقف فوراً بدل تكرار الصفقة. هذا يحمي من أي
- * تنفيذ مزدوج عرضي (نقرة مزدوجة، إعادة تحميل، إلخ) — ونفس المنطق
- * سيكون جوهرياً في البوت الكامل لاحقاً (قاعدة "مركز واحد لكل عملة").
+ * ⚠️ إصلاح جذري بعد اكتشاف حقيقي: حماية "فحص المركز أولاً" التي بنيت
+ * سابقاً فشلت فعلياً — طلبان وصلا بالتزامن (على الأرجح بسبب إعادة
+ * محاولة تلقائية من الشبكة/المتصفح بسبب بطء الاستجابة) أنتجا صفقتين
+ * مكررتين رغم الحماية، لأن "الفحص ثم التصرف" (Check-then-Act) لا
+ * يحمي من التزامن الحقيقي — كلا الطلبين يريان "لا يوجد مركز" معاً.
+ *
+ * الحل: قفل ذري حقيقي (Atomic Lock) عبر قيد PRIMARY KEY في Supabase.
+ * قاعدة البيانات نفسها تضمن أن طلباً واحداً فقط ينجح في "حجز" القفل،
+ * بصرف النظر عن التوقيت — لا نعتمد على قراءة ثم قرار، بل على رفض
+ * قاعدة البيانات نفسها لأي محاولة ثانية بنفس المفتاح.
  *
  * الاستدعاء العادي:     /api/status?key=مفتاحك
  * الاستدعاء التنفيذي:   /api/status?key=مفتاحك&confirm=yes-place-order&symbol=ETHUSDT
  */
 const trade = require('../lib/binanceTrade');
+
+const SB_URL = process.env.SUPABASE_URL;
+const SB_KEY = process.env.SUPABASE_KEY;
+
+async function sb(path, options = {}) {
+  const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      apikey: SB_KEY,
+      authorization: `Bearer ${SB_KEY}`,
+      'content-type': 'application/json',
+      ...(options.headers || {}),
+    },
+  });
+  const text = await res.text();
+  let data;
+  try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
+  return { ok: res.ok, status: res.status, data };
+}
+
+/** يحاول حجز القفل. true = نجح (نملك القفل الآن)، false = محجوز بالفعل */
+async function tryAcquireLock(lockKey) {
+  const r = await sb('trade_locks', {
+    method: 'POST',
+    headers: { prefer: 'return=minimal' },
+    body: JSON.stringify([{ lock_key: lockKey }]),
+  });
+  // نجاح الإدراج = حصلنا على القفل. فشل بسبب تكرار المفتاح (409/23505) = محجوز بالفعل
+  return r.ok;
+}
+
+async function releaseLock(lockKey) {
+  await sb(`trade_locks?lock_key=eq.${encodeURIComponent(lockKey)}`, { method: 'DELETE' });
+}
 
 module.exports = async (req, res) => {
   res.setHeader('content-type', 'application/json; charset=utf-8');
@@ -21,6 +60,8 @@ module.exports = async (req, res) => {
   const check = (name, ok, detail) => results.push({ name, ok, detail });
   const wantsLiveTest = req.query?.confirm === 'yes-place-order';
   const SYMBOL = String(req.query?.symbol || 'ETHUSDT').toUpperCase();
+  const lockKey = `trade:${SYMBOL}`;
+  let lockAcquired = false;
 
   try {
     const hasKey = !!process.env.BINANCE_DEMO_API_KEY;
@@ -47,23 +88,20 @@ module.exports = async (req, res) => {
       return;
     }
 
-    /* ---------------- ⚠️ الحماية الجديدة: لا مركز مكرر ---------------- */
-    const positionsBeforeAnything = await trade.getPositions();
-    const existingPos = positionsBeforeAnything.find(
-      (p) => p.symbol === SYMBOL && Number(p.positionAmt) !== 0
-    );
-    if (existingPos) {
-      check('فحص مركز مكرر', false, {
-        message: `⚠️ يوجد مركز مفتوح بالفعل على ${SYMBOL} — تم إيقاف التنفيذ لمنع التكرار`,
-        existingPosition: { symbol: existingPos.symbol, positionAmt: existingPos.positionAmt, entryPrice: existingPos.entryPrice },
+    /* ---------------- ⚠️ القفل الذري الحقيقي ---------------- */
+    lockAcquired = await tryAcquireLock(lockKey);
+    if (!lockAcquired) {
+      check('حجز القفل الذري', false, {
+        message: `⛔ طلب آخر يحمل القفل على ${SYMBOL} بالفعل حالياً — تم رفض هذا الطلب فوراً من قاعدة البيانات نفسها`,
+        lockKey,
       });
       res.status(200).end(JSON.stringify({
-        summary: '⛔ تم إيقاف التنفيذ — مركز مكرر مكتشف على نفس العملة',
+        summary: '⛔ تم رفض التنفيذ من طرف القفل الذري — طلب مكرر مُكتشَف بيقين رياضي',
         allOk: false, results,
       }, null, 2));
       return;
     }
-    check('فحص مركز مكرر', true, `لا مركز موجود مسبقاً على ${SYMBOL} — آمن للمتابعة`);
+    check('حجز القفل الذري', true, `تم حجز القفل بنجاح على ${SYMBOL} — لا طلب آخر يستطيع التنفيذ الآن`);
 
     /* ---------------- الاختبار التنفيذي ---------------- */
     const exchangeInfo = await trade.publicRequest('/fapi/v1/exchangeInfo');
@@ -86,7 +124,7 @@ module.exports = async (req, res) => {
     qty = Number(qty.toFixed(decimals));
 
     check('حساب أصغر كمية مسموحة', qty > 0, {
-      symbol: SYMBOL, currentPrice, stepSize, minQty, minNotional, computedQty: qty,
+      symbol: SYMBOL, currentPrice, computedQty: qty,
       estimatedValueUSD: Number((qty * currentPrice).toFixed(2)),
     });
 
@@ -94,23 +132,21 @@ module.exports = async (req, res) => {
       symbol: SYMBOL, side: 'BUY', type: 'MARKET', quantity: qty,
     });
     check('تنفيذ أمر الشراء', buyOrder?.orderId != null, {
-      orderId: buyOrder?.orderId, symbol: buyOrder?.symbol, side: buyOrder?.side,
-      origQty: buyOrder?.origQty, status: buyOrder?.status,
+      orderId: buyOrder?.orderId, origQty: buyOrder?.origQty, status: buyOrder?.status,
     });
 
     await new Promise((r) => setTimeout(r, 800));
     const positionsAfterBuy = await trade.getPositions();
     const openPos = positionsAfterBuy.find((p) => p.symbol === SYMBOL && Number(p.positionAmt) !== 0);
     check('تأكيد فتح المركز فعلياً', !!openPos, openPos
-      ? { symbol: openPos.symbol, positionAmt: openPos.positionAmt, entryPrice: openPos.entryPrice }
+      ? { positionAmt: openPos.positionAmt, entryPrice: openPos.entryPrice }
       : 'لم يظهر مركز مفتوح بعد الشراء');
 
     const sellOrder = await trade.signedRequest('POST', '/fapi/v1/order', {
       symbol: SYMBOL, side: 'SELL', type: 'MARKET', quantity: qty, reduceOnly: 'true',
     });
     check('تنفيذ أمر الإغلاق', sellOrder?.orderId != null, {
-      orderId: sellOrder?.orderId, symbol: sellOrder?.symbol, side: sellOrder?.side,
-      origQty: sellOrder?.origQty, status: sellOrder?.status,
+      orderId: sellOrder?.orderId, origQty: sellOrder?.origQty, status: sellOrder?.status,
     });
 
     await new Promise((r) => setTimeout(r, 800));
@@ -121,12 +157,15 @@ module.exports = async (req, res) => {
     const allOk = results.every((r) => r.ok !== false);
     res.status(200).end(JSON.stringify({
       summary: allOk
-        ? `✅ اختبار التنفيذ نجح على ${SYMBOL} — شراء وإغلاق فعليان، بلا تكرار`
+        ? `✅ اختبار التنفيذ نجح على ${SYMBOL} — محمي بقفل ذري حقيقي، لا تكرار ممكن`
         : '⚠️ توجد مشكلة — راجع التفاصيل',
       allOk, results,
     }, null, 2));
   } catch (e) {
     results.push({ name: 'خطأ عام', ok: false, detail: { message: e.message } });
     res.status(200).end(JSON.stringify({ summary: '❌ فشل الاختبار', allOk: false, results }, null, 2));
+  } finally {
+    // ⚠️ نُحرّر القفل دائماً، حتى لو حدث خطأ — وإلا يبقى محجوزاً للأبد
+    if (lockAcquired) { try { await releaseLock(lockKey); } catch { /* غير حرج */ } }
   }
 };
