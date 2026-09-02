@@ -1,9 +1,9 @@
 /**
  * ⚠️ يستبدل api/status.js مؤقتاً — يعيد لأصله بعد الاستخدام.
- * يجلب سجل "الدخل" الكامل من باينس (/fapi/v1/income) — يشمل كل شيء
- * أثّر على رصيدك: أرباح/خسائر محققة، رسوم، تمويل. هذا يعطينا الصورة
- * الكاملة الحقيقية مباشرة من المصدر، بلا نسخ يدوي عرضة للخطأ.
- * الاستدعاء: /api/status  (بلا أي معامل)
+ * يتحقق من قائمة كل العملات المتاحة فعلياً في Demo Trading (USDⓈ-M)،
+ * ويقارنها بعينة من عملات معروفة (قديمة وحديثة نسبياً) للتأكد هل
+ * الدعم شامل أم محدود بمجموعة قديمة فقط.
+ * الاستدعاء: /api/status
  */
 const trade = require('../lib/binanceTrade');
 
@@ -11,43 +11,27 @@ module.exports = async (req, res) => {
   res.setHeader('content-type', 'application/json; charset=utf-8');
   res.setHeader('cache-control', 'no-store');
   try {
-    // آخر ٧ أيام كافية لتغطية "منذ الليلة الماضية" بأمان
-    const startTime = Date.now() - (7 * 24 * 60 * 60 * 1000);
-    const income = await trade.signedRequest('GET', '/fapi/v1/income', {
-      startTime, limit: 1000,
-    });
+    const info = await trade.publicRequest('/fapi/v1/exchangeInfo');
+    const allSymbols = info.symbols
+      .filter((s) => s.status === 'TRADING')
+      .map((s) => s.symbol);
 
-    const byType = {};
-    let totalNet = 0;
-    for (const item of income) {
-      const type = item.incomeType;
-      const amount = parseFloat(item.income);
-      byType[type] = (byType[type] || 0) + amount;
-      totalNet += amount;
-    }
-
-    // نجمع أيضاً حسب العملة، لنرى أي عملة ساهمت أكثر في التغيّر
-    const bySymbol = {};
-    for (const item of income) {
-      if (!item.symbol) continue;
-      const amount = parseFloat(item.income);
-      bySymbol[item.symbol] = (bySymbol[item.symbol] || 0) + amount;
-    }
-
-    const account = await trade.getAccountInfo();
+    // عينة من عملات "قديمة جداً" وأخرى "أحدث نسبياً" للتأكد من التغطية
+    const testSample = [
+      'BTCUSDT', 'ETHUSDT',           // قديمة جداً، الأساسية
+      'SOLUSDT', 'DOGEUSDT',          // معروفة، متوسطة العمر
+      'PENDLEUSDT', 'ARBUSDT',        // أحدث نسبياً
+      'WIFUSDT', 'ORDIUSDT',          // حديثة جداً نسبياً
+    ];
+    const availability = Object.fromEntries(
+      testSample.map((s) => [s, allSymbols.includes(s)])
+    );
 
     res.status(200).end(JSON.stringify({
-      summary: `مجموع كل التغيرات المالية آخر 7 أيام: ${totalNet.toFixed(2)}$`,
-      currentBalance: account.totalWalletBalance,
-      totalEventsFound: income.length,
-      breakdownByType: Object.fromEntries(
-        Object.entries(byType).map(([k, v]) => [k, Number(v.toFixed(2))])
-      ),
-      breakdownBySymbol: Object.fromEntries(
-        Object.entries(bySymbol).map(([k, v]) => [k, Number(v.toFixed(2))])
-          .sort((a, b) => a[1] - b[1])  // الأكثر خسارة أولاً
-      ),
-      note: 'REALIZED_PNL = أرباح/خسائر الصفقات المغلقة | COMMISSION = رسوم التداول | FUNDING_FEE = رسوم تمويل دورية',
+      summary: `إجمالي العملات المتاحة للتداول حالياً في Demo Trading: ${allSymbols.length}`,
+      sampleAvailability: availability,
+      lastTwentySymbolsAlphabetically: allSymbols.sort().slice(-20),
+      note: 'إن ظهرت العملات "الحديثة" في sampleAvailability بـ true، فالدعم شامل لا محدود بالقديمة فقط',
     }, null, 2));
   } catch (e) {
     res.status(500).end(JSON.stringify({ error: e.message }));
