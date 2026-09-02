@@ -1,9 +1,9 @@
 /**
  * ⚠️ يستبدل api/status.js مؤقتاً — يعيد لأصله بعد الاستخدام.
- * يتحقق من قائمة كل العملات المتاحة فعلياً في Demo Trading (USDⓈ-M)،
- * ويقارنها بعينة من عملات معروفة (قديمة وحديثة نسبياً) للتأكد هل
- * الدعم شامل أم محدود بمجموعة قديمة فقط.
- * الاستدعاء: /api/status
+ * يعرض كل حقول الرصيد ذات الصلة من حساب Demo Trading معاً، جنباً
+ * لجنب، لفهم الفارق بين ما يظهر في واجهة التطبيق وما يستخدمه كودنا
+ * فعلياً في حساب حجم المركز.
+ * الاستدعاء: /api/status?key=أي_شيء (لا يحتاج مفتاحك العادي فعلياً)
  */
 const trade = require('../lib/binanceTrade');
 
@@ -11,27 +11,30 @@ module.exports = async (req, res) => {
   res.setHeader('content-type', 'application/json; charset=utf-8');
   res.setHeader('cache-control', 'no-store');
   try {
-    const info = await trade.publicRequest('/fapi/v1/exchangeInfo');
-    const allSymbols = info.symbols
-      .filter((s) => s.status === 'TRADING')
-      .map((s) => s.symbol);
-
-    // عينة من عملات "قديمة جداً" وأخرى "أحدث نسبياً" للتأكد من التغطية
-    const testSample = [
-      'BTCUSDT', 'ETHUSDT',           // قديمة جداً، الأساسية
-      'SOLUSDT', 'DOGEUSDT',          // معروفة، متوسطة العمر
-      'PENDLEUSDT', 'ARBUSDT',        // أحدث نسبياً
-      'WIFUSDT', 'ORDIUSDT',          // حديثة جداً نسبياً
-    ];
-    const availability = Object.fromEntries(
-      testSample.map((s) => [s, allSymbols.includes(s)])
-    );
+    const account = await trade.getAccountInfo();
+    const positions = await trade.getPositions();
+    const openPositions = positions.filter((p) => Number(p.positionAmt) !== 0);
 
     res.status(200).end(JSON.stringify({
-      summary: `إجمالي العملات المتاحة للتداول حالياً في Demo Trading: ${allSymbols.length}`,
-      sampleAvailability: availability,
-      lastTwentySymbolsAlphabetically: allSymbols.sort().slice(-20),
-      note: 'إن ظهرت العملات "الحديثة" في sampleAvailability بـ true، فالدعم شامل لا محدود بالقديمة فقط',
+      summary: 'مقارنة حقول الرصيد — لفهم الفارق بين واجهة التطبيق وما يستخدمه كودنا',
+      balanceFields: {
+        totalWalletBalance: account.totalWalletBalance,
+        availableBalance: account.availableBalance,
+        totalMarginBalance: account.totalMarginBalance,
+        totalUnrealizedProfit: account.totalUnrealizedProfit,
+        totalPositionInitialMargin: account.totalPositionInitialMargin,
+        totalOpenOrderInitialMargin: account.totalOpenOrderInitialMargin,
+      },
+      openPositionsCount: openPositions.length,
+      openPositionsDetail: openPositions.map((p) => ({
+        symbol: p.symbol,
+        positionAmt: p.positionAmt,
+        entryPrice: p.entryPrice,
+        unrealizedProfit: p.unRealizedProfit || p.unrealizedProfit,
+        initialMargin: p.initialMargin,
+        isolatedMargin: p.isolatedMargin,
+      })),
+      note: 'قارن totalWalletBalance (على الأرجح ما تراه في التطبيق) بـ availableBalance (ما يستخدمه البوت فعلياً في الحساب)',
     }, null, 2));
   } catch (e) {
     res.status(500).end(JSON.stringify({ error: e.message }));
