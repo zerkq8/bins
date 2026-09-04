@@ -69,7 +69,7 @@ module.exports = async (req, res) => {
 
       const r = await sb('bot_settings?id=eq.1&select=*');
       const settings = r.data?.[0] || null;
-      res.status(200).end(JSON.stringify({ ok: true, settings }));
+      res.status(200).end(JSON.stringify({ ok: true, settings, mode: trade.MODE }));
       return;
     }
 

@@ -37,6 +37,7 @@
   header{padding:8px 0 4px}
   header h1{font-size:19px; font-weight:800}
   header span{display:block; margin-top:3px; font-size:12px; color:var(--dim)}
+  header span.mode-real{color:var(--rust); font-weight:700}
 
   .balance-card{margin-top:18px; padding:16px 18px; border-radius:14px; background:var(--card);
     border:1px solid var(--line); display:flex; align-items:center; justify-content:space-between}
@@ -163,7 +164,7 @@ function bindLogin(){
       const d = await res.json();
       if(!res.ok || !d.ok) throw new Error(d.error || 'مفتاح غير صحيح');
       adminKey = v;
-      renderSettings(d.settings);
+      renderSettings(d.settings, d.mode);
     }catch(e){
       $('#app').innerHTML = loginScreen(e.message);
       
@@ -190,7 +191,7 @@ function bindEmergencyButton(){
       // نُحدّث الشاشة لتعكس أن البوت أصبح متوقفاً الآن
       const settingsRes = await fetch('/api/botsettings?key=' + encodeURIComponent(adminKey));
       const settingsData = await settingsRes.json();
-      if(settingsData.ok) renderSettings(settingsData.settings);
+      if(settingsData.ok) renderSettings(settingsData.settings, settingsData.mode);
     }catch(e){
       alert('تعذّر الإغلاق: ' + e.message);
     }
@@ -211,11 +212,14 @@ function fmtPriceMove(pct, leverage){
   return (pct/leverage).toFixed(2) + '% حركة سعرية فعلية';
 }
 
-function renderSettings(s){
+function renderSettings(s, mode){
+  const isReal = mode === 'real';
   $('#app').innerHTML = `
     <header>
       <h1>إعدادات البوت</h1>
-      <span>مرصد المتداولين — تداول تجريبي (Demo Trading)</span>
+      <span class="${isReal ? 'mode-real' : ''}">${isReal
+        ? 'مرصد المتداولين — تداول حقيقي (Real Trading)'
+        : 'مرصد المتداولين — تداول تجريبي (Demo Trading)'}</span>
     </header>
 
     <div class="balance-card" id="balanceCard">
@@ -296,7 +300,9 @@ function renderSettings(s){
     </div>
 
     <div class="warn-box">
-      ⚠️ حساب تجريبي (Demo Trading) بمال وهمي — لكن المنطق نفسه سيُستخدم لاحقاً بمالك الحقيقي.
+      ${isReal
+        ? '⚠️ حساب حقيقي (Real Trading) — هذا مالك الفعلي، وأي صفقة تُنفَّذ فعلياً على حسابك في باينس.'
+        : '⚠️ حساب تجريبي (Demo Trading) بمال وهمي — لكن المنطق نفسه سيُستخدم لاحقاً بمالك الحقيقي.'}
       راجع الأرقام بعناية قبل كل حفظ.
     </div>
 
@@ -380,7 +386,7 @@ function bindEmergencyButton(){
       // نُحدّث الشاشة لتعكس أن البوت أصبح متوقفاً الآن
       const settingsRes = await fetch('/api/botsettings?key=' + encodeURIComponent(adminKey));
       const settingsData = await settingsRes.json();
-      if(settingsData.ok) renderSettings(settingsData.settings);
+      if(settingsData.ok) renderSettings(settingsData.settings, settingsData.mode);
     }catch(e){
       alert('تعذّر الإغلاق: ' + e.message);
     }
