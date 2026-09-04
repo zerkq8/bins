@@ -1,42 +1,19 @@
-/**
- * ⚠️ يستبدل api/status.js مؤقتاً — يعيد لأصله بعد الاستخدام.
- * يعرض كل حقول الرصيد ذات الصلة من حساب Demo Trading معاً، جنباً
- * لجنب، لفهم الفارق بين ما يظهر في واجهة التطبيق وما يستخدمه كودنا
- * فعلياً في حساب حجم المركز.
- * الاستدعاء: /api/status?key=أي_شيء (لا يحتاج مفتاحك العادي فعلياً)
- */
-const trade = require('../lib/binanceTrade');
+أريد استعادة api/status.js لنسخته الأصلية — حالياً يحمل أداة تشخيص
+مؤقتة لفحص الرصيد (balancecheck) بدل وظيفته الأصلية.
 
-module.exports = async (req, res) => {
-  res.setHeader('content-type', 'application/json; charset=utf-8');
-  res.setHeader('cache-control', 'no-store');
-  try {
-    const account = await trade.getAccountInfo();
-    const positions = await trade.getPositions();
-    const openPositions = positions.filter((p) => Number(p.positionAmt) !== 0);
+النسخة الأصلية يجب أن تبدأ بـ:
+const { getPositionStatusBulk, jsonHandler } = require('../lib/binance');
 
-    res.status(200).end(JSON.stringify({
-      summary: 'مقارنة حقول الرصيد — لفهم الفارق بين واجهة التطبيق وما يستخدمه كودنا',
-      balanceFields: {
-        totalWalletBalance: account.totalWalletBalance,
-        availableBalance: account.availableBalance,
-        totalMarginBalance: account.totalMarginBalance,
-        totalUnrealizedProfit: account.totalUnrealizedProfit,
-        totalPositionInitialMargin: account.totalPositionInitialMargin,
-        totalOpenOrderInitialMargin: account.totalOpenOrderInitialMargin,
-      },
-      openPositionsCount: openPositions.length,
-      openPositionsDetail: openPositions.map((p) => ({
-        symbol: p.symbol,
-        positionAmt: p.positionAmt,
-        entryPrice: p.entryPrice,
-        unrealizedProfit: p.unRealizedProfit || p.unrealizedProfit,
-        initialMargin: p.initialMargin,
-        isolatedMargin: p.isolatedMargin,
-      })),
-      note: 'قارن totalWalletBalance (على الأرجح ما تراه في التطبيق) بـ availableBalance (ما يستخدمه البوت فعلياً في الحساب)',
-    }, null, 2));
-  } catch (e) {
-    res.status(500).end(JSON.stringify({ error: e.message }));
-  }
-};
+ووظيفتها: فحص حالة علامات 🟢/🔴 (مفتوح/مغلق) لصفقات المتداولين —
+هذا الملف يُستدعى عبر cron-job.org كل دقيقة (واحدة من مهام 1111/2222/3333).
+
+المطلوب:
+1. اعرض لي محتوى api/status.js الحالي (النسخة المؤقتة) كاملاً
+2. تحقق: هل يوجد نسخة سابقة من هذا الملف بتاريخ commits قبل ما
+   استُبدل بأداة balancecheck؟ شغّل: git log --oneline -- api/status.js
+   واعرض لي القائمة، خصوصاً أي commit فيه رسالة تشير لإضافة فحص الرصيد
+   المؤقت
+3. لو لقيت commit سابق بالنسخة الأصلية، اعرض محتواه كاملاً عبر:
+   git show <hash>:api/status.js
+4. لا تعدّل أو تستبدل أي شيء بعد — فقط اعرض لي كلا النسختين (الحالية
+   والأصلية المستخرجة من التاريخ) للمقارنة قبل أي قرار استعادة
