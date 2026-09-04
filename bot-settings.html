@@ -38,6 +38,12 @@
   header h1{font-size:19px; font-weight:800}
   header span{display:block; margin-top:3px; font-size:12px; color:var(--dim)}
 
+  .balance-card{margin-top:18px; padding:16px 18px; border-radius:14px; background:var(--card);
+    border:1px solid var(--line); display:flex; align-items:center; justify-content:space-between}
+  .balance-label{font-size:13px; color:var(--dim)}
+  .balance-value{font-size:20px; font-weight:800; font-family:"IBM Plex Mono",monospace; direction:ltr; color:var(--jade)}
+  .balance-value.err{font-size:12px; font-weight:600; color:var(--rust); font-family:"IBM Plex Sans Arabic",sans-serif; direction:rtl}
+
   .power-card{margin-top:18px; border-radius:14px; overflow:hidden;
     border:1px solid var(--line); background:var(--card)}
   .power-card.on{border-color:#1F6B54}
@@ -112,6 +118,28 @@
 <script>
 const $ = s => document.querySelector(s);
 let adminKey = '';
+let balanceInterval = null;
+
+async function refreshBalance(){
+  const el = $('#balanceValue');
+  if(!el) return;
+  try{
+    const res = await fetch('/api/balance?key=' + encodeURIComponent(adminKey));
+    const d = await res.json();
+    if(!res.ok || !d.ok) throw new Error(d.error || 'تعذّر جلب الرصيد');
+    el.textContent = '$' + Number(d.availableBalance).toFixed(2);
+    el.classList.remove('err');
+  }catch(e){
+    el.textContent = 'تعذّر جلب الرصيد — ' + e.message;
+    el.classList.add('err');
+  }
+}
+
+function startBalancePolling(){
+  if(balanceInterval) clearInterval(balanceInterval);
+  refreshBalance();
+  balanceInterval = setInterval(refreshBalance, 30000);
+}
 
 function loginScreen(errMsg){
   return `
@@ -189,6 +217,11 @@ function renderSettings(s){
       <h1>إعدادات البوت</h1>
       <span>مرصد المتداولين — تداول تجريبي (Demo Trading)</span>
     </header>
+
+    <div class="balance-card" id="balanceCard">
+      <span class="balance-label">الرصيد المتاح للتداول</span>
+      <span class="balance-value" id="balanceValue">جارٍ التحميل...</span>
+    </div>
 
     <div class="power-card ${s.enabled?'on':''}" id="powerCard">
       <div class="power-head">
@@ -274,6 +307,7 @@ function renderSettings(s){
   `;
   bindSettingsForm(s);
   bindEmergencyButton();
+  startBalancePolling();
 }
 
 function bindSettingsForm(initial){
