@@ -124,7 +124,7 @@ async function refreshBalance(){
   const el = $('#balanceValue');
   if(!el) return;
   try{
-    const res = await fetch('/api/balance?key=' + encodeURIComponent(adminKey));
+    const res = await fetch('/api/botsettings?key=' + encodeURIComponent(adminKey) + '&action=balance');
     const d = await res.json();
     if(!res.ok || !d.ok) throw new Error(d.error || 'تعذّر جلب الرصيد');
     el.textContent = '$' + Number(d.availableBalance).toFixed(2);

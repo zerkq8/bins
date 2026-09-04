@@ -5,10 +5,16 @@
  * (1111/2222/3333) المستخدمة لعرض البيانات فقط. هذا يحمي كتابة فعلية
  * على إعدادات تحرّك مالاً حقيقياً (ولو تجريبياً الآن).
  *
- * GET  /api/botsettings?key=المفتاح_الإداري          → قراءة الإعدادات الحالية
- * POST /api/botsettings?key=المفتاح_الإداري            → تحديثها (body: JSON)
+ * GET  /api/botsettings?key=المفتاح_الإداري                    → قراءة الإعدادات الحالية
+ * GET  /api/botsettings?key=المفتاح_الإداري&action=balance     → الرصيد المتاح للتداول فقط
+ * POST /api/botsettings?key=المفتاح_الإداري                    → تحديثها (body: JSON)
+ *
+ * ⚠️ دُمج هنا (بدل ملف api/balance.js منفصل) لأن خطة Vercel Hobby تحدّ
+ * عدد Serverless Functions بـ 12 لكل نشرة — إضافة ملف مستقل كانت تتجاوز
+ * الحد وتُفشل البناء.
  */
 const { emergencyStopAll } = require('../lib/botTrade');
+const trade = require('../lib/binanceTrade');
 
 const SB_URL = process.env.SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_KEY;
@@ -55,6 +61,12 @@ module.exports = async (req, res) => {
     if (!key || key !== ADMIN_KEY) throw new Error('مفتاح إداري غير صحيح');
 
     if (req.method === 'GET') {
+      if (req.query?.action === 'balance') {
+        const account = await trade.getAccountInfo();
+        res.status(200).end(JSON.stringify({ ok: true, availableBalance: account.availableBalance }));
+        return;
+      }
+
       const r = await sb('bot_settings?id=eq.1&select=*');
       const settings = r.data?.[0] || null;
       res.status(200).end(JSON.stringify({ ok: true, settings }));
