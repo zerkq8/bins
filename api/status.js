@@ -1,19 +1,12 @@
-أريد استعادة api/status.js لنسخته الأصلية — حالياً يحمل أداة تشخيص
-مؤقتة لفحص الرصيد (balancecheck) بدل وظيفته الأصلية.
-
-النسخة الأصلية يجب أن تبدأ بـ:
+/**
+‏‎ * حالة عرض المراكز لعدة متداولين دفعة واحدة — يُستخدم لرسم علامة
+ * 🟢 ظاهرة / 🔴 مخفية بجانب كل اسم في القوائم، بلا تحميل صفحة كاملة.
+ * الاستدعاء: /api/status?ids=id1,id2,id3
+ */
 const { getPositionStatusBulk, jsonHandler } = require('../lib/binance');
-
-ووظيفتها: فحص حالة علامات 🟢/🔴 (مفتوح/مغلق) لصفقات المتداولين —
-هذا الملف يُستدعى عبر cron-job.org كل دقيقة (واحدة من مهام 1111/2222/3333).
-
-المطلوب:
-1. اعرض لي محتوى api/status.js الحالي (النسخة المؤقتة) كاملاً
-2. تحقق: هل يوجد نسخة سابقة من هذا الملف بتاريخ commits قبل ما
-   استُبدل بأداة balancecheck؟ شغّل: git log --oneline -- api/status.js
-   واعرض لي القائمة، خصوصاً أي commit فيه رسالة تشير لإضافة فحص الرصيد
-   المؤقت
-3. لو لقيت commit سابق بالنسخة الأصلية، اعرض محتواه كاملاً عبر:
-   git show <hash>:api/status.js
-4. لا تعدّل أو تستبدل أي شيء بعد — فقط اعرض لي كلا النسختين (الحالية
-   والأصلية المستخرجة من التاريخ) للمقارنة قبل أي قرار استعادة
+module.exports = jsonHandler(async (req) => {
+  const ids = String(req.query?.ids || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (!ids.length) return { statuses: {} };
+  const statuses = await getPositionStatusBulk(ids);
+  return { statuses, fetchedAt: Date.now() };
+}, 30);
