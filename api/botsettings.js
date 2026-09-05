@@ -7,11 +7,12 @@
  *
  * GET  /api/botsettings?key=المفتاح_الإداري                    → قراءة الإعدادات الحالية
  * GET  /api/botsettings?key=المفتاح_الإداري&action=balance     → الرصيد المتاح للتداول فقط
+ * GET  /api/botsettings?key=المفتاح_الإداري&action=portfolio   → قيمة المحفظة + ربح/خسارة 24 ساعة
  * POST /api/botsettings?key=المفتاح_الإداري                    → تحديثها (body: JSON)
  *
- * ⚠️ دُمج هنا (بدل ملف api/balance.js منفصل) لأن خطة Vercel Hobby تحدّ
- * عدد Serverless Functions بـ 12 لكل نشرة — إضافة ملف مستقل كانت تتجاوز
- * الحد وتُفشل البناء.
+ * ⚠️ كل نقاط القراءة الإضافية (balance، portfolio) تُدمَج هنا بدل ملفات
+ * API منفصلة لأن خطة Vercel Hobby تحدّ عدد Serverless Functions بـ 12
+ * لكل نشرة — إضافة ملف مستقل لكل ميزة كانت تتجاوز الحد وتُفشل البناء.
  */
 const { emergencyStopAll } = require('../lib/botTrade');
 const trade = require('../lib/binanceTrade');
@@ -64,6 +65,34 @@ module.exports = async (req, res) => {
       if (req.query?.action === 'balance') {
         const account = await trade.getAccountInfo();
         res.status(200).end(JSON.stringify({ ok: true, availableBalance: account.availableBalance }));
+        return;
+      }
+
+      if (req.query?.action === 'portfolio') {
+        // القيمة الإجمالية: totalWalletBalance موجود جاهزاً في رد
+        // /fapi/v2/account نفسه (getAccountInfo) — لا حاجة لأي تعديل
+        // على lib/binanceTrade.js لهذا الجزء.
+        //
+        // الربح/الخسارة خلال 24 ساعة: اخترنا /fapi/v1/income (سجل
+        // الدخل) بدل الاكتفاء بحقول /fapi/v2/account، لأن الحساب
+        // الأخير يعرض فقط unrealizedProfit اللحظي للمراكز المفتوحة
+        // الآن — لا تاريخاً. income يجمع كل ما أثّر فعلياً على الرصيد
+        // خلال المدة (ربح/خسارة محقق + عمولات + تمويل)، فيعكس التغيّر
+        // الحقيقي في المحفظة، حتى لو أُغلقت كل الصفقات ولم يبق مركز
+        // مفتوح الآن.
+        const [account, income] = await Promise.all([
+          trade.getAccountInfo(),
+          trade.get24hIncome(),
+        ]);
+        const totalWalletBalance = Number(account.totalWalletBalance);
+        const pnl24h = income.pnl;
+        // النسبة المئوية نسبةً لرصيد بداية الفترة (المُقدَّر بطرح ربح/
+        // خسارة الـ24 ساعة من الرصيد الحالي)، لا الرصيد الحالي نفسه —
+        // فهذا يعكس العائد الفعلي على رأس المال الذي كان مستثمراً بداية
+        // المدة، لا نسبة عشوائية على رصيد تغيّر أصلاً بسبب نفس الربح/الخسارة.
+        const startBalance = totalWalletBalance - pnl24h;
+        const pnl24hPct = startBalance > 0 ? (pnl24h / startBalance) * 100 : null;
+        res.status(200).end(JSON.stringify({ ok: true, totalWalletBalance, pnl24h, pnl24hPct }));
         return;
       }
 

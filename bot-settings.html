@@ -45,6 +45,14 @@
   .balance-value{font-size:20px; font-weight:800; font-family:"IBM Plex Mono",monospace; direction:ltr; color:var(--jade)}
   .balance-value.err{font-size:12px; font-weight:600; color:var(--rust); font-family:"IBM Plex Sans Arabic",sans-serif; direction:rtl}
 
+  .portfolio-card{margin-top:12px; padding:16px 18px; border-radius:14px; background:var(--card);
+    border:1px solid var(--line); display:flex; flex-direction:column; gap:10px}
+  .portfolio-row{display:flex; align-items:center; justify-content:space-between}
+  .pnl-value{font-size:16px; font-weight:800; font-family:"IBM Plex Mono",monospace; direction:ltr; color:var(--text)}
+  .pnl-value.pos{color:var(--jade)}
+  .pnl-value.neg{color:var(--rust)}
+  .pnl-value.err{font-size:12px; font-weight:600; color:var(--rust); font-family:"IBM Plex Sans Arabic",sans-serif; direction:rtl}
+
   .power-card{margin-top:18px; border-radius:14px; overflow:hidden;
     border:1px solid var(--line); background:var(--card)}
   .power-card.on{border-color:#1F6B54}
@@ -136,10 +144,36 @@ async function refreshBalance(){
   }
 }
 
-function startBalancePolling(){
+async function refreshPortfolio(){
+  const valueEl = $('#portfolioValue');
+  const pnlEl = $('#pnlValue');
+  if(!valueEl || !pnlEl) return;
+  try{
+    const res = await fetch('/api/botsettings?key=' + encodeURIComponent(adminKey) + '&action=portfolio');
+    const d = await res.json();
+    if(!res.ok || !d.ok) throw new Error(d.error || 'تعذّر جلب بيانات المحفظة');
+    valueEl.textContent = '$' + Number(d.totalWalletBalance).toFixed(2);
+    valueEl.classList.remove('err');
+
+    const pnl = Number(d.pnl24h);
+    const sign = pnl >= 0 ? '+' : '';
+    const pct = d.pnl24hPct;
+    pnlEl.textContent = `${sign}$${pnl.toFixed(2)}` + (pct !== null && Number.isFinite(pct) ? ` (${sign}${pct.toFixed(2)}%)` : '');
+    pnlEl.classList.remove('err','pos','neg');
+    pnlEl.classList.add(pnl >= 0 ? 'pos' : 'neg');
+  }catch(e){
+    valueEl.textContent = 'تعذّر جلب البيانات — ' + e.message;
+    valueEl.classList.add('err');
+    pnlEl.textContent = '';
+    pnlEl.classList.remove('pos','neg');
+  }
+}
+
+function startDashboardPolling(){
   if(balanceInterval) clearInterval(balanceInterval);
-  refreshBalance();
-  balanceInterval = setInterval(refreshBalance, 30000);
+  const refreshAll = () => { refreshBalance(); refreshPortfolio(); };
+  refreshAll();
+  balanceInterval = setInterval(refreshAll, 30000);
 }
 
 function loginScreen(errMsg){
@@ -225,6 +259,17 @@ function renderSettings(s, mode){
     <div class="balance-card" id="balanceCard">
       <span class="balance-label">الرصيد المتاح للتداول</span>
       <span class="balance-value" id="balanceValue">جارٍ التحميل...</span>
+    </div>
+
+    <div class="portfolio-card" id="portfolioCard">
+      <div class="portfolio-row">
+        <span class="balance-label">القيمة الإجمالية للمحفظة</span>
+        <span class="balance-value" id="portfolioValue">جارٍ التحميل...</span>
+      </div>
+      <div class="portfolio-row">
+        <span class="balance-label">الربح/الخسارة (24 ساعة)</span>
+        <span class="pnl-value" id="pnlValue">—</span>
+      </div>
     </div>
 
     <div class="power-card ${s.enabled?'on':''}" id="powerCard">
@@ -313,7 +358,7 @@ function renderSettings(s, mode){
   `;
   bindSettingsForm(s);
   bindEmergencyButton();
-  startBalancePolling();
+  startDashboardPolling();
 }
 
 function bindSettingsForm(initial){
