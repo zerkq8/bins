@@ -13,6 +13,12 @@
  * ⚠️ كل نقاط القراءة الإضافية (balance، portfolio) تُدمَج هنا بدل ملفات
  * API منفصلة لأن خطة Vercel Hobby تحدّ عدد Serverless Functions بـ 12
  * لكل نشرة — إضافة ملف مستقل لكل ميزة كانت تتجاوز الحد وتُفشل البناء.
+ *
+ * atr_enabled: مفتاح تفعيل/تعطيل الوقف والهدف المتكيّف مع تقلب العملة
+ * (ATR). عند true، تُستخدم النسب المُدخلة كحد أدنى مضمون مع إمكانية
+ * توسّعها على العملات شديدة التقلب. عند false (الافتراضي)، تُستخدم
+ * النسب المُدخلة ثابتة تماماً بلا أي تعديل. يُقرأ ويُكتب هنا بنفس
+ * آلية باقي حقول bot_settings، ويُستهلك من lib/botTrade.js.
  */
 const { emergencyStopAll } = require('../lib/botTrade');
 const trade = require('../lib/binanceTrade');
@@ -42,6 +48,7 @@ function validateSettings(s) {
   if (!(s.stop_loss_pct > 0 && s.stop_loss_pct <= 100)) errors.push('وقف الخسارة يجب أن يكون بين 0 و 100');
   if (!(s.take_profit_pct > 0)) errors.push('هدف الربح يجب أن يكون أكبر من 0');
   if (!(s.max_concurrent_positions >= 1 && s.max_concurrent_positions <= 20)) errors.push('عدد المراكز يجب أن يكون بين 1 و 20');
+  if (typeof s.atr_enabled !== 'boolean') errors.push('atr_enabled يجب أن يكون true أو false');
   return errors;
 }
 
@@ -124,6 +131,7 @@ module.exports = async (req, res) => {
         stop_loss_pct: Number(body.stop_loss_pct),
         take_profit_pct: Number(body.take_profit_pct),
         max_concurrent_positions: Number(body.max_concurrent_positions),
+        atr_enabled: !!body.atr_enabled,
       };
       const errors = validateSettings(settings);
       if (errors.length) {
