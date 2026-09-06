@@ -268,9 +268,11 @@ function renderSettings(s, mode){
         <h2>حجم المركز والرافعة</h2>
       </div>
       <div class="field">
-        <label>نسبة الهامش من الرصيد الحالي</label>
-        <div class="hint">مثال: 10 تعني أن كل صفقة تستخدم 10٪ من رصيدك المتبقي وقتها، لا الأصلي.</div>
-        <input type="number" id="position_pct" value="${s.position_pct}" min="0.1" max="100" step="0.1">
+        <label>المبلغ الثابت لكل صفقة (USD)</label>
+        <div class="hint">كل صفقة تستخدم هذا المبلغ بالضبط كهامش، بغض النظر عن رصيدك الحالي.
+        إذا كان رصيدك المتاح أقل من هذا المبلغ وقت اكتشاف صفقة جديدة، لن يدخل
+        البوت أي صفقة إطلاقاً حتى يتوفر رصيد كافٍ.</div>
+        <input type="number" id="position_amount_usd" value="${s.position_amount_usd}" min="0.01" step="0.01">
       </div>
       <div class="field">
         <label>الرافعة الثابتة</label>
@@ -371,7 +373,7 @@ function bindSettingsForm(initial){
     const btn = $('#saveBtn');
     const payload = {
       enabled: $('#enabledToggle').checked,
-      position_pct: parseFloat($('#position_pct').value),
+      position_amount_usd: parseFloat($('#position_amount_usd').value),
       leverage: parseInt($('#leverage').value, 10),
       stop_loss_pct: parseFloat($('#stop_loss_pct').value),
       take_profit_pct: parseFloat($('#take_profit_pct').value),

@@ -41,9 +41,15 @@ async function sb(path, options = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
+// حد أقصى احترازي فقط (ليس قيداً منطقياً حقيقياً) — لالتقاط خطأ كتابة
+// واضح (مثل إضافة صفر زائد) لا لتقييد مبلغ فعلي معقول. عدّله متى شئت.
+const MAX_POSITION_AMOUNT_USD = 1000000;
+
 function validateSettings(s) {
   const errors = [];
-  if (!(s.position_pct > 0 && s.position_pct <= 100)) errors.push('نسبة المركز يجب أن تكون بين 0 و 100');
+  if (!(s.position_amount_usd > 0 && s.position_amount_usd <= MAX_POSITION_AMOUNT_USD)) {
+    errors.push(`المبلغ الثابت لكل صفقة يجب أن يكون أكبر من 0 (وأقل من ${MAX_POSITION_AMOUNT_USD} كحد احترازي)`);
+  }
   if (!(s.leverage >= 1 && s.leverage <= 125)) errors.push('الرافعة يجب أن تكون بين 1 و 125');
   if (!(s.stop_loss_pct > 0 && s.stop_loss_pct <= 100)) errors.push('وقف الخسارة يجب أن يكون بين 0 و 100');
   if (!(s.take_profit_pct > 0)) errors.push('هدف الربح يجب أن يكون أكبر من 0');
@@ -126,7 +132,7 @@ module.exports = async (req, res) => {
 
       const settings = {
         enabled: !!body.enabled,
-        position_pct: Number(body.position_pct),
+        position_amount_usd: Number(body.position_amount_usd),
         leverage: Number(body.leverage),
         stop_loss_pct: Number(body.stop_loss_pct),
         take_profit_pct: Number(body.take_profit_pct),
