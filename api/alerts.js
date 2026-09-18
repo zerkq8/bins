@@ -3,8 +3,12 @@
  * تفحص: (١) دفعة من المتداولين (فتح/إغلاق مراكز)، ثم (٢) كل العملات
  * المتابَعة (وصول لأدنى قاع) — كلاهما بنفس الاستدعاء ونفس الجدولة،
  * فلا حاجة لإعداد مهمة cron ثانية.
+ *
+ * ?report=daily — التقرير اليومي الملخّص (مهمة cron منفصلة، مرة يومياً
+ * 18:00 UTC = 21:00 الكويت). مدمج هنا بدل ملف مستقل بسبب حد 12 دالة على
+ * خطة Vercel Hobby. هذا الاستدعاء لا يشغّل الفحص الدوري إطلاقاً.
  */
-const { runAlerts } = require('../lib/alerts');
+const { runAlerts, runDailyReport } = require('../lib/alerts');
 const { runCoinAlerts } = require('../lib/coinalerts');
 const { ENDPOINTS, HEADERS, BASE, __internal } = require('../lib/binance');
 
@@ -22,6 +26,12 @@ module.exports = async (req, res) => {
   try {
     const key = String(req.query?.key || '').trim();
     if (!key || key.length < 4) throw new Error('المفتاح الشخصي مفقود.');
+
+    if (String(req.query?.report || '') === 'daily') {
+      const report = await runDailyReport({ deviceKey: key });
+      res.status(200).end(JSON.stringify({ ok: true, ...report, at: Date.now() }));
+      return;
+    }
 
     const traderResult = await runAlerts({ callPositions, deviceKey: key });
 
