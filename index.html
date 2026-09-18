@@ -404,6 +404,7 @@
   <section class="panel" style="margin-top:16px">
     <div id="signalBody"></div>
     <div id="backtestBody"></div>
+    <div id="radarBody"></div>
   </section>
 </div>
 
@@ -536,6 +537,7 @@ function sortBar(){
     ['', 'الترتيب الافتراضي'],
     ['roi', 'العائد'],
     ['copierPnl', 'الناسخون'],
+    ['winRate', 'نسبة الصفقات الرابحة'],
     ['mdd', 'أقصى تراجع (الأقل أولاً)'],
     ['age', 'عمر السجل (الأطول أولاً)'],
     ['tv', 'القيمة الحقيقية'],
@@ -1486,10 +1488,276 @@ async function runBacktest(symbol, interval){
   }
 }
 
+/* ---------- ٨) رادار السوق — باكتست فقط (مرحلة أولى) ----------
+ * منفصل تماماً عن بوت متابعة المتداولين. لا يرسل تنبيهات ولا يدخل صفقات —
+ * يختبر فقط منطق "رادار السوق" المقترح على شموع 4 ساعات تاريخية حقيقية،
+ * بفلتر اتجاه يومي إلزامي، ليُقرَّر بناءً على النتائج هل يُبنى نظام
+ * التنبيهات الفعلي أم لا.
+ */
+// كل الرموز مُتحقَّق منها ضد /fapi/v1/exchangeInfo (status=TRADING، عقد دائم، USDT).
+// MATIC أصبح POL على باينانس، وPEPE يُتداول كعقد 1000PEPE.
+const RADAR_SYMBOLS = [
+  ['BTCUSDT','BTC'], ['ETHUSDT','ETH'], ['BNBUSDT','BNB'], ['SOLUSDT','SOL'], ['XRPUSDT','XRP'], ['DOGEUSDT','DOGE'],
+  ['ADAUSDT','ADA'], ['AVAXUSDT','AVAX'], ['LINKUSDT','LINK'], ['LTCUSDT','LTC'], ['TRXUSDT','TRX'], ['DOTUSDT','DOT'],
+  ['POLUSDT','POL (MATIC سابقاً)'], ['UNIUSDT','UNI'], ['ATOMUSDT','ATOM'], ['NEARUSDT','NEAR'], ['APTUSDT','APT'], ['ARBUSDT','ARB'],
+  ['OPUSDT','OP'], ['FILUSDT','FIL'], ['SUIUSDT','SUI'], ['INJUSDT','INJ'], ['TIAUSDT','TIA'], ['SEIUSDT','SEI'],
+  ['1000PEPEUSDT','PEPE (عقد 1000PEPE)'], ['WIFUSDT','WIF'], ['RENDERUSDT','RENDER'], ['FETUSDT','FET'], ['TAOUSDT','TAO'], ['ONDOUSDT','ONDO'],
+];
+let lastRadarSymbol = 'BTCUSDT';
+
+function radarForm(){
+  const opts = RADAR_SYMBOLS.map(([sym,label]) =>
+    `<option value="${sym}" ${sym===lastRadarSymbol?'selected':''}>${esc(label)} — ${sym}</option>`).join('');
+  return `<div class="ta-card" style="margin-top:14px">
+    <div class="ta-section">
+      <div class="k">📡 رادار السوق — اختبار تاريخي (المرحلة الأولى)</div>
+      <div style="font-size:11.5px;color:var(--dim);margin-top:4px;line-height:1.8">
+        منطق مختلف عن "الإشارة السريعة": ثلاثة عوامل على شموع ٤ ساعات (RSI + متوسطات + حجم) بمجموع من −٣ إلى +٣،
+        مع فلتر اتجاه يومي إلزامي. باكتست فقط — لا تنبيهات ولا دخول آلي.
+      </div>
+    </div>
+    <div class="pad" style="padding-top:4px">
+      <div class="field">
+        <label>العملة (٣٠ عملة رئيسية ومتوسطة على باينانس فيوتشر)</label>
+        <select id="radarSym">${opts}</select>
+      </div>
+      <button class="go" id="radarGo">📡 شغّل باكتست رادار السوق (آخر ١٠٠٠ شمعة ٤ ساعات)</button>
+    </div>
+  </div>
+  <div id="radarResult"></div>`;
+}
+
+function bindRadar(){
+  const btn = $('#radarGo');
+  if(btn) btn.onclick = () => {
+    const v = $('#radarSym').value;
+    lastRadarSymbol = v;
+    runRadarBacktest(v);
+  };
+}
+
+/* درجة الرادار لكل شمعة ٤ ساعات:
+ *   RSI(14):  >55 وترتفع = +1 · <45 وتنخفض = −1 · غير ذلك = 0
+ *   MA7/MA25: MA7>MA25 = +1 · MA7<MA25 = −1
+ *   الحجم:    شمعة > 1.3× متوسط الـ20 شمعة السابقة (بدون الحالية) = يدعم
+ *             اتجاه العاملَين الآخرَين (+1 أو −1 بحسب إشارتهما) — الحجم
+ *             وحده بلا اتجاه لا يُحتسب، وعند تعارض RSI والمتوسطات لا يُحتسب.
+ */
+function radarScores(closes, volumes){
+  const ma7 = sma(closes,7), ma25 = sma(closes,25), rsi = rsiSeries(closes,14);
+  const n = closes.length;
+  const scores = new Array(n).fill(null);
+  for(let i=25; i<n; i++){
+    if(ma7[i]==null || ma25[i]==null || rsi[i]==null || rsi[i-1]==null) continue;
+    const rsiF = (rsi[i] > 55 && rsi[i] > rsi[i-1]) ? 1 : (rsi[i] < 45 && rsi[i] < rsi[i-1]) ? -1 : 0;
+    const maF  = ma7[i] > ma25[i] ? 1 : ma7[i] < ma25[i] ? -1 : 0;
+    let volF = 0;
+    if(i >= 20){
+      let sum = 0; for(let j=i-20; j<i; j++) sum += volumes[j];
+      const avg20 = sum/20;
+      const dir = Math.sign(rsiF + maF);
+      if(avg20 > 0 && volumes[i] > 1.3*avg20 && dir !== 0) volF = dir;
+    }
+    scores[i] = rsiF + maF + volF;
+  }
+  return scores;
+}
+
+/* اتجاه اليومي "الساري" عند افتتاح كل شمعة ٤ ساعات — نأخذ آخر شمعة يومية
+ * مُغلقة قبل افتتاح الشمعة (لا اليوم الجاري) لتجنّب النظر للمستقبل. */
+function radarDailyTrendFor(open4h, daily){
+  const dCloseTimes = daily.map(k => k[6]);
+  const dCloses = daily.map(k => parseFloat(k[4]));
+  const dMa7 = sma(dCloses,7), dMa25 = sma(dCloses,25);
+  const out = new Array(open4h.length).fill(null);
+  let d = 0;
+  for(let i=0; i<open4h.length; i++){
+    while(d+1 < daily.length && dCloseTimes[d+1] <= open4h[i]) d++;
+    if(dCloseTimes[d] > open4h[i]) continue;              // لا يوجد يوم مُغلق قبلها بعد
+    if(dMa7[d]==null || dMa25[d]==null) continue;
+    out[i] = dMa7[d] > dMa25[d] ? 'up' : dMa7[d] < dMa25[d] ? 'down' : null;
+  }
+  return out;
+}
+
+/* محاكاة صفقات مستوى واحد (|score| = tier بالضبط) — نفس أسلوب simulateBacktest:
+ * وقف 1.5×ATR(14)، هدف 2× مسافة الوقف، صفقة واحدة مفتوحة بنفس الوقت، مهلة 60 شمعة.
+ * الدخول عند "ظهور" الإشارة (انتقال الدرجة إلى هذا المستوى)، لا في كل شمعة
+ * تبقى فيها الدرجة عند المستوى — لأن التنبيه المستقبلي يُرسَل مرة عند ظهورها. */
+function radarSimulate(tier, scores, dailyTrend, highs, lows, closes, atrArr){
+  const atrMult = 1.5, rr = 2, lookahead = 60;
+  const trades = [];
+  let openTrade = null, filteredOut = 0;
+
+  for(let i=1; i<closes.length; i++){
+    if(openTrade && !openTrade.closed){
+      const t = openTrade;
+      if(t.signal==='buy'){
+        if(highs[i] >= t.target){ t.closed=true; t.outcome='win'; t.exitIndex=i; }
+        else if(lows[i] <= t.stop){ t.closed=true; t.outcome='loss'; t.exitIndex=i; }
+      } else {
+        if(lows[i] <= t.target){ t.closed=true; t.outcome='win'; t.exitIndex=i; }
+        else if(highs[i] >= t.stop){ t.closed=true; t.outcome='loss'; t.exitIndex=i; }
+      }
+      if(t.closed || (i - t.entryIndex) > lookahead){
+        if(!t.closed){ t.outcome='open'; t.closed=true; }
+        openTrade = null;
+      }
+    }
+
+    const s = scores[i], prev = scores[i-1];
+    if(s==null || Math.abs(s) !== tier) continue;
+    // "ظهور" = الوصول لهذا المستوى من مستوى أدنى بنفس الاتجاه (أو من الاتجاه المعاكس).
+    // استمرار نفس الدرجة، أو الهبوط من ±3 إلى ±2، ليس إشارة جديدة.
+    if(prev!=null && Math.sign(prev) === Math.sign(s) && Math.abs(prev) >= tier) continue;
+
+    const signal = s > 0 ? 'buy' : 'sell';
+    const trend = dailyTrend[i];
+    if((signal==='buy' && trend!=='up') || (signal==='sell' && trend!=='down')){ filteredOut++; continue; }
+    if(openTrade) continue;
+    if(atrArr[i]==null) continue;
+
+    const entry = closes[i], risk = atrArr[i]*atrMult;
+    const trade = {
+      entryIndex:i, signal, entry,
+      stop:   signal==='buy' ? entry-risk    : entry+risk,
+      target: signal==='buy' ? entry+risk*rr : entry-risk*rr,
+      closed:false, outcome:null, exitIndex:null
+    };
+    trades.push(trade);
+    openTrade = trade;
+  }
+  if(openTrade && !openTrade.closed){ openTrade.outcome='open'; openTrade.closed=true; }
+  return { trades, filteredOut };
+}
+
+function radarStats(trades){
+  const wins = trades.filter(t=>t.outcome==='win').length;
+  const losses = trades.filter(t=>t.outcome==='loss').length;
+  const open = trades.filter(t=>t.outcome==='open').length;
+  const resolved = wins+losses;
+  const winRate = resolved ? wins/resolved*100 : null;
+  // بوحدات R: الهدف = +2R (2× مسافة الوقف)، الوقف = −1R
+  const grossProfitR = wins*2, grossLossR = losses*1;
+  const profitFactor = resolved===0 ? null : grossLossR===0 ? Infinity : grossProfitR/grossLossR;
+  let maxLossStreak = 0, streak = 0;
+  for(const t of trades){
+    if(t.outcome==='loss'){ streak++; if(streak>maxLossStreak) maxLossStreak=streak; }
+    else if(t.outcome==='win'){ streak=0; }
+  }
+  return { wins, losses, open, resolved, winRate, profitFactor, maxLossStreak };
+}
+
+function radarTierCard(title, subtitle, sim){
+  const s = radarStats(sim.trades);
+  const wrColor = s.winRate===null ? 'var(--dim)' : s.winRate>=50 ? 'var(--jade)' : 'var(--rust)';
+  const pfText = s.profitFactor===null ? '—' : s.profitFactor===Infinity ? '∞' : fmtNum(s.profitFactor,2);
+  const pfColor = s.profitFactor===null ? 'var(--dim)' : s.profitFactor>=1 ? 'var(--jade)' : 'var(--rust)';
+  const mono = "font-family:'IBM Plex Mono',monospace;direction:ltr;font-size:17px";
+  return `<div class="ta-card" style="margin-top:14px">
+    <div class="ta-section">
+      <div class="k">${title}</div>
+      <div style="font-size:11.5px;color:var(--dim);margin-top:3px">${subtitle}</div>
+    </div>
+    <div class="facts">
+      <div class="fact"><b>${sim.trades.length}</b><span>إشارات مُحتسبة</span></div>
+      <div class="fact"><b class="up">${s.wins}</b><span>وصلت للهدف</span></div>
+      <div class="fact"><b class="down">${s.losses}</b><span>ضربت الوقف</span></div>
+      <div class="fact"><b>${s.open}</b><span>غير محسومة</span></div>
+    </div>
+    <div class="ta-section">
+      <div class="ta-levels" style="grid-template-columns:1fr 1fr 1fr;margin-top:0">
+        <div class="ta-lvl-box"><div class="lbl">نسبة النجاح</div>
+          <b style="${mono};color:${wrColor}">${s.winRate===null?'—':fmtNum(s.winRate,1)+'%'}</b></div>
+        <div class="ta-lvl-box"><div class="lbl">Profit Factor</div>
+          <b style="${mono};color:${pfColor}">${pfText}</b></div>
+        <div class="ta-lvl-box"><div class="lbl">أقصى خسائر متتالية</div>
+          <b style="${mono};color:${s.maxLossStreak>=4?'var(--rust)':'var(--text)'}">${s.resolved?s.maxLossStreak:'—'}</b></div>
+      </div>
+      <div style="font-size:11px;color:var(--dim);margin-top:8px">
+        استُبعدت ${sim.filteredOut} إشارة من هذا المستوى لمخالفتها اتجاه اليومي (لا تدخل في أي رقم أعلاه).
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderRadar(r){
+  if(r.error) return `<div class="error" style="margin-top:14px">${esc(r.error)}</div>`;
+  const trendWord = r.currentDailyTrend==='up' ? 'صاعد' : r.currentDailyTrend==='down' ? 'هابط' : 'غير محدد';
+  const trendColor = r.currentDailyTrend==='up' ? 'var(--jade)' : r.currentDailyTrend==='down' ? 'var(--rust)' : 'var(--dim)';
+  return `
+  <div class="ta-card" style="margin-top:14px">
+    <div class="ta-section">
+      <div class="k">📡 نتيجة رادار السوق · ${esc(r.symbol)} · إطار ٤ ساعات + فلتر يومي</div>
+      <div style="font-size:11.5px;color:var(--dim);margin-top:4px;line-height:1.8">
+        ${r.candlesUsed} شمعة ٤ ساعات فعلية من باينانس
+        <span style="direction:ltr;unicode-bidi:isolate;display:inline-block;font-family:'IBM Plex Mono',monospace">(${esc(fmtTime(r.from))} → ${esc(fmtTime(r.to))})</span> ·
+        ${r.dailyCandles} شمعة يومية للفلتر · اتجاه اليومي الآن:
+        <b style="color:${trendColor}">${trendWord}</b>
+      </div>
+    </div>
+    <div class="ta-note" style="margin:12px 16px;border-color:#453413;background:#1A1408;color:#E8C77E">
+      ⚠️ <b>قيد معروف:</b> Funding Rate التاريخي غير مشمول في هذا الباكتست (غير متاح بسهولة للفترات الماضية) —
+      الدرجة هنا من ٣ عوامل فقط (RSI + المتوسطات + الحجم)، فمداها −٣ إلى +٣. نظام التنبيهات المستقبلي قد يضيف
+      عاملاً رابعاً، فلا تُقارَن أرقامه مباشرة بهذه النتائج.
+    </div>
+  </div>
+  ${radarTierCard('🟡 Score = ±2 بالضبط (ستكون "إشارة متوسطة")',
+    'عاملان من ثلاثة متفقان — أو عامل واحد + حجم داعم. الدخول عند ظهور الإشارة فقط.', r.tier2)}
+  ${radarTierCard('🟢 Score = ±3 بالضبط (ستكون "إشارة قوية")',
+    'كل العوامل الثلاثة متفقة بنفس الاتجاه. الدخول عند ظهور الإشارة فقط.', r.tier3)}
+  <div class="ta-note" style="margin:0 16px 16px">
+    <b>طريقة المحاكاة:</b> نفس أسلوب الاختبار التاريخي الحالي — دخول بسعر إغلاق شمعة الإشارة، وقف 1.5×ATR(14)،
+    هدف 2× مسافة الوقف (1:2)، صفقة واحدة مفتوحة بنفس الوقت، وتُعتبر "غير محسومة" إن لم تُلمس بعد 60 شمعة.
+    Profit Factor بوحدات المخاطرة (كل هدف = +2R، كل وقف = −1R). فلتر اليومي يستخدم آخر شمعة يومية <b>مُغلقة</b>
+    قبل افتتاح شمعة الـ٤ ساعات، لا اليوم الجاري.<br>
+    ⚠️ نتائج <b>الماضي فقط</b> على هذي العملة تحديداً — لا تضمن التكرار، والقرار يبقى قرارك.
+  </div>`;
+}
+
+async function runRadarBacktest(symbol){
+  const sym = symbol.toUpperCase();
+  $('#radarResult').innerHTML = '<div class="skeleton" style="margin-top:14px"></div><div class="skeleton"></div><div class="skeleton"></div>';
+  try{
+    const [res4h, res1d] = await Promise.all([
+      fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=4h&limit=1000`),
+      fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=1d&limit=300`),
+    ]);
+    if(!res4h.ok || !res1d.ok) throw new Error('not_found');
+    const [k4h, k1d] = await Promise.all([res4h.json(), res1d.json()]);
+    if(!Array.isArray(k4h) || k4h.length < 200) throw new Error('not_enough_4h');
+    if(!Array.isArray(k1d) || k1d.length < 60) throw new Error('not_enough_1d');
+
+    const opens = k4h.map(k => k[0]);
+    const highs = k4h.map(k => parseFloat(k[2]));
+    const lows  = k4h.map(k => parseFloat(k[3]));
+    const closes= k4h.map(k => parseFloat(k[4]));
+    const vols  = k4h.map(k => parseFloat(k[5]));
+
+    const scores = radarScores(closes, vols);
+    const dailyTrend = radarDailyTrendFor(opens, k1d);
+    const atrArr = atrSeries(highs, lows, closes, 14);
+
+    const tier2 = radarSimulate(2, scores, dailyTrend, highs, lows, closes, atrArr);
+    const tier3 = radarSimulate(3, scores, dailyTrend, highs, lows, closes, atrArr);
+
+    $('#radarResult').innerHTML = renderRadar({
+      symbol: sym, candlesUsed: closes.length, dailyCandles: k1d.length,
+      from: opens[0], to: k4h[k4h.length-1][6],
+      currentDailyTrend: dailyTrend[dailyTrend.length-1],
+      tier2, tier3,
+    });
+  }catch(e){
+    $('#radarResult').innerHTML = renderRadar({ error: 'ما قدرت أشغّل باكتست الرادار على هذا الرمز — إمّا الرمز غير متاح على باينانس فيوتشر حالياً أو البيانات التاريخية غير كافية. جرّب عملة أخرى.' });
+  }
+}
+
 function showSignal(){
   $('#signalBody').innerHTML = signalForm();
   $('#backtestBody').innerHTML = '';
+  $('#radarBody').innerHTML = radarForm();
   bindSignal();
+  bindRadar();
 }
 
 /* ================= قائمة المتابعة (Supabase) ================= */
