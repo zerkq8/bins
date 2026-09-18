@@ -565,28 +565,55 @@ function sortTraders(list){
   return withVal.map(x => x.t);
 }
 
-/** بطاقة "عملات آخر ١٠ صفقات" — من كاش مملوء تدريجياً بعد الرسم، أو نائب "..." حتى يصل */
-function coinCountHtml(id){
-  const c = coinCountCache[id];
-  if(!c) return `<span class="mini" id="cc-${id}">عملات (آخر ١٠ صفقات) <b>...</b></span>`;
-  if(c.hidden) return `<span class="mini" id="cc-${id}">السجل مخفي</span>`;
-  if(c.error) return `<span class="mini" id="cc-${id}">عملات (آخر ١٠ صفقات) <b>—</b></span>`;
-  return `<span class="mini" id="cc-${id}">عملات (آخر ${c.of} صفقات) <b>${c.count}</b></span>`;
+/**
+ * نسبة وعدد الصفقات الرابحة من آخر ≤٢٠ صفقة مغلقة (d.closed بعد رفع
+ * pageSize في getTrader) — على مستوى الصفقة الفردية مباشرة، بلا أي
+ * تجميع أو تمييز حسب رمز العملة.
+ */
+function computeWinStats(closed){
+  const total = closed.length;
+  const wins = closed.filter(c => Number(c.roi) > 0).length;
+  return { total, wins };
 }
 
-/** يجلب عدد العملات المختلفة لمن لم يُجلب له بعد، ويحدّث بطاقته مباشرة بلا إعادة رسم القائمة كلها */
-async function loadCoinCounts(traders){
+/**
+ * سطر "نسبة% رابحة · N عملية (M رابحة)" — كله من كاش يُملأ بعد جلب
+ * /api/trader/{id} (لا شيء منه من t.winRate). أخضر لو النسبة ≥50٪،
+ * أحمر غير ذلك؛ العدد بين القوسين بنفس اللون.
+ */
+function winRateLine(id, scope){
+  const domId = `cc-${scope}-${id}`;
+  const c = coinCountCache[id];
+  if(!c) return `<span id="${domId}" style="color:var(--dim)">... رابحة</span>`;
+  if(c.hidden) return `<span id="${domId}" style="color:var(--dim)">السجل مخفي</span>`;
+  if(c.error) return `<span id="${domId}" style="color:var(--dim)">تعذّر جلب البيانات</span>`;
+  if(!c.total) return `<span id="${domId}" style="color:var(--dim)">لا صفقات مسجّلة</span>`;
+  const pct = c.wins / c.total * 100;
+  const color = pct >= 50 ? 'var(--jade)' : 'var(--rust)';
+  return `<span id="${domId}"><span style="color:${color};font-weight:600">${fmtNum(pct,0)}% رابحة</span> · ${c.total} عملية (<span style="color:${color}">${c.wins} رابحة</span>)</span>`;
+}
+
+const COIN_STATS_SCOPES = ['list','watch']; // كل الأقسام التي قد تعرض نفس المتداول معاً
+
+/**
+ * يجلب إحصاء الصفقات لمن لم يُجلب له بعد (أي قسم)، ويحدّث بطاقته مباشرة
+ * بلا إعادة رسم القائمة كلها. ⚠️ يُحدَّث كل قسم (list وwatch) لهذا المتداول
+ * إن وُجد بالـDOM حالياً — لا القسم الذي بدأ الجلب فقط — لأن نفس المتداول
+ * قد يظهر في القسمين معاً في نفس الجلسة، والكاش مشترك بينهما.
+ */
+async function loadCoinCounts(traders, scope){
   const toFetch = traders.filter(t => !(t.id in coinCountCache));
   await Promise.all(toFetch.map(async t => {
     try{
       const d = await getJSON('/api/trader/'+encodeURIComponent(t.id));
-      const symbols = new Set((d.closed||[]).map(c=>c.symbol));
-      coinCountCache[t.id] = d.hiddenHistory ? { hidden:true } : { count: symbols.size, of: d.closed.length };
+      coinCountCache[t.id] = d.hiddenHistory ? { hidden:true } : computeWinStats(d.closed||[]);
     }catch{
       coinCountCache[t.id] = { error:true };
     }
-    const el = document.getElementById('cc-'+t.id);
-    if(el) el.outerHTML = coinCountHtml(t.id);
+    for(const s of COIN_STATS_SCOPES){
+      const el = document.getElementById(`cc-${s}-${t.id}`);
+      if(el) el.outerHTML = winRateLine(t.id, s);
+    }
   }));
 }
 
@@ -600,10 +627,7 @@ function renderList(traders, title){
     const inCompare = compareIds.includes(t.id);
     return `<button class="trader-row" data-id="${t.id}">
       <span class="tname" style="display:block">${esc(t.nickname)}</span>
-      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px">
-        ${has(t.winRate)?`<span class="mini">رابحة <b>${fmtNum(t.winRate,0)}%</b></span>`:''}
-        ${coinCountHtml(t.id)}
-      </div>
+      <div style="margin-top:6px;font-size:12.5px">${winRateLine(t.id, 'list')}</div>
       <div style="margin-top:7px" onclick="event.stopPropagation()">
         <button class="wbtn compare-toggle ${inCompare?'on':''}" data-cmp="${t.id}"
           style="${inCompare?'background:var(--amber);color:#15100A;border-color:var(--amber)':''}">
@@ -613,7 +637,7 @@ function renderList(traders, title){
     </button>`;
   }).join('');
   document.querySelectorAll('.trader-row').forEach(b => b.onclick = () => selectTrader(b.dataset.id));
-  loadCoinCounts(ordered);
+  loadCoinCounts(ordered, 'list');
 
   const ss = $('#sortSel');
   if(ss) ss.onchange = () => { sortKey = ss.value || null; renderList(currentTraders, title); };
@@ -2071,6 +2095,7 @@ async function loadWatch(){
           <button class="wbtn" data-del="${t.id}">إزالة</button>
           <button class="wbtn" data-open="${t.id}">التفاصيل</button>
         </div>
+        <div style="margin-top:6px;font-size:12.5px">${winRateLine(t.id, 'watch')}</div>
         <div style="margin-top:7px">${deltas}</div>
         ${sparkline(t.chart)}
         <div class="wgrid">
@@ -2084,6 +2109,7 @@ async function loadWatch(){
       ? `<div class="note">تعذّر جلب ${d.missing.length} — قد يكونوا أغلقوا محافظهم.</div>` : '')
       + alertBox() + dangerZone();
     bindAlerts();
+    loadCoinCounts(d.traders, 'watch');
 
     const next = {};
     d.traders.forEach(t => next[t.id] = { roi:t.roi, copierPnl:t.copierPnl });
