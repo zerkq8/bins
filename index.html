@@ -531,6 +531,7 @@ function trueValueLabel(v){
 
 /* ---------- الفرز والمقارنة ---------- */
 let currentTraders = [], sortKey = null, sortDir = 'desc', compareIds = [];
+let currentListTitle = ''; // لإعادة رسم القائمة نفسها بعد اكتمال جلب معايير "الأقوى" بالخلفية
 const coinCountCache = {}; // يُملأ تدريجياً بعد الرسم — لا يُعاد الجلب عند إعادة الرسم (فرز/مقارنة)
 
 function sortBar(){
@@ -542,6 +543,7 @@ function sortBar(){
     ['mdd', 'أقصى تراجع (الأقل أولاً)'],
     ['age', 'عمر السجل (الأطول أولاً)'],
     ['tv', 'القيمة الحقيقية'],
+    ['strong', 'الأقوى (4-5 معايير)'],
   ];
   return `<div style="display:flex;gap:7px;padding:9px 13px;border-bottom:1px solid var(--line);align-items:center;flex-wrap:wrap">
     <span style="font-size:11.5px;color:var(--dim)">ترتيب:</span>
@@ -554,8 +556,39 @@ function sortBar(){
   </div>`;
 }
 
+/**
+ * المعايير الخمسة لفلتر "الأقوى" — أربعة منها متوفرة أصلاً على كائن
+ * المتداول t نفسه (مصدره getTop، يحمل حقول القائمة الكاملة: mdd،
+ * sharpe، sortino من computeRealMetrics، copierPnl، startTime) بلا أي
+ * جلب إضافي. avgLeverage وحده يحتاج getTrader()، فيأتي من نفس الكاش
+ * coinCountCache المستخدم أصلاً لسطر "نسبة الرابحة" — لا جلب مكرر.
+ * تُرجع null (= "غير معروف بعد") إن لم يصل بعد جلب avgLeverage لهذا
+ * المتداول، حتى لا يظهر أو يختفي بالخطأ قبل اكتمال البيانات.
+ */
+function computeStrongScore(t){
+  const c = coinCountCache[t.id];
+  if(!c) return null; // avgLeverage لم يُجلب بعد
+  const avgLev = (c.hidden || c.error) ? null : c.avgLeverage;
+  const age = daysSince(t.startTime);
+  const checks = [
+    has(t.copierPnl) && t.copierPnl > 0,
+    has(t.mdd) && t.mdd < 25,
+    has(age) && age >= 180,
+    has(avgLev) && avgLev < 10,
+    has(t.sharpe) && t.sharpe > 1 && has(t.sortino) && t.sortino > 1,
+  ];
+  return checks.filter(Boolean).length;
+}
+
 function sortTraders(list){
   if(!sortKey) return list;
+  if(sortKey === 'strong'){
+    return list
+      .map(t => ({ t, score: computeStrongScore(t) }))
+      .filter(x => x.score !== null && x.score >= 4)
+      .sort((a,b) => (has(b.t.copierPnl)?b.t.copierPnl:-Infinity) - (has(a.t.copierPnl)?a.t.copierPnl:-Infinity))
+      .map(x => x.t);
+  }
   const withVal = list.map(t => ({ t, v: sortKey==='age' ? daysSince(t.startTime) : sortKey==='tv' ? trueValue(t) : t[sortKey] }));
   withVal.sort((a,b) => {
     const av = has(a.v)?a.v:-Infinity, bv = has(b.v)?b.v:-Infinity;
@@ -566,14 +599,17 @@ function sortTraders(list){
 }
 
 /**
- * نسبة وعدد الصفقات الرابحة من آخر ≤٢٠ صفقة مغلقة (d.closed بعد رفع
- * pageSize في getTrader) — على مستوى الصفقة الفردية مباشرة، بلا أي
- * تجميع أو تمييز حسب رمز العملة.
+ * نسبة وعدد الصفقات الرابحة، ومتوسط الرافعة، من آخر ≤٢٠ صفقة مغلقة
+ * (d.closed بعد رفع pageSize في getTrader) — على مستوى الصفقة الفردية
+ * مباشرة، بلا أي تجميع أو تمييز حسب رمز العملة. avgLeverage هنا تُستخدم
+ * لاحقاً في فلتر "الأقوى" (computeStrongScore) — نفس الجلب، لا طلب إضافي.
  */
 function computeWinStats(closed){
   const total = closed.length;
   const wins = closed.filter(c => Number(c.roi) > 0).length;
-  return { total, wins };
+  const levs = closed.map(c => Number(c.leverage)).filter(Number.isFinite);
+  const avgLeverage = levs.length ? levs.reduce((a,b)=>a+b,0)/levs.length : null;
+  return { total, wins, avgLeverage };
 }
 
 /**
@@ -600,6 +636,13 @@ const COIN_STATS_SCOPES = ['list','watch']; // كل الأقسام التي قد
  * بلا إعادة رسم القائمة كلها. ⚠️ يُحدَّث كل قسم (list وwatch) لهذا المتداول
  * إن وُجد بالـDOM حالياً — لا القسم الذي بدأ الجلب فقط — لأن نفس المتداول
  * قد يظهر في القسمين معاً في نفس الجلسة، والكاش مشترك بينهما.
+ *
+ * ⚠️ فلتر "الأقوى" (sortKey==='strong') يحتاج avgLeverage من نفس هذا
+ * الجلب ليقرّر من يظهر أصلاً — فإن كانت هذه الدفعة جلبت شيئاً جديداً
+ * وكان الفلتر لا يزال مفعَّلاً بعد اكتمالها، نُعيد رسم القائمة **مرة
+ * واحدة فقط** (لا لكل متداول على حدة، تفادياً لرسم متكرر متلاحق) —
+ * حتى تظهر تدريجياً كل بطاقة اكتملت معاييرها، بلا أي حجب لظهور بقية
+ * البطاقات أو تعطيل التمرير بالصفحة.
  */
 async function loadCoinCounts(traders, scope){
   const toFetch = traders.filter(t => !(t.id in coinCountCache));
@@ -615,18 +658,28 @@ async function loadCoinCounts(traders, scope){
       if(el) el.outerHTML = winRateLine(t.id, s);
     }
   }));
+  if(toFetch.length && sortKey === 'strong') renderList(currentTraders, currentListTitle);
 }
 
 function renderList(traders, title){
   traders.forEach(t => cacheRows[t.id] = t);
   currentTraders = traders;
+  currentListTitle = title;
   $('#listTitle').textContent = title;
-  $('#listMeta').textContent = traders.length + ' متداول';
   const ordered = sortTraders(traders);
+  $('#listMeta').textContent = sortKey === 'strong'
+    ? `${ordered.length} من ${traders.length} حقّقوا 4+ معايير`
+    : traders.length + ' متداول';
   $('#list').innerHTML = sortBar() + ordered.map((t)=>{
     const inCompare = compareIds.includes(t.id);
+    const strongScore = sortKey === 'strong' ? computeStrongScore(t) : null;
+    const strongBadge = strongScore !== null
+      ? `<span class="mini good" style="margin-inline-start:6px">${strongScore}/5</span>` : '';
     return `<button class="trader-row" data-id="${t.id}">
-      <span class="tname" style="display:block">${esc(t.nickname)}</span>
+      <div style="display:flex;align-items:center;overflow:hidden">
+        <span class="tname" style="display:block;flex:1;min-width:0">${esc(t.nickname)}</span>
+        ${strongBadge}
+      </div>
       <div style="margin-top:6px;font-size:12.5px">${winRateLine(t.id, 'list')}</div>
       <div style="margin-top:7px" onclick="event.stopPropagation()">
         <button class="wbtn compare-toggle ${inCompare?'on':''}" data-cmp="${t.id}"
@@ -637,7 +690,7 @@ function renderList(traders, title){
     </button>`;
   }).join('');
   document.querySelectorAll('.trader-row').forEach(b => b.onclick = () => selectTrader(b.dataset.id));
-  loadCoinCounts(ordered, 'list');
+  loadCoinCounts(traders, 'list'); // القائمة الكاملة دائماً، لا المُصفّاة — ليظهر تدريجياً من يتأهل حديثاً بفلتر "الأقوى"
 
   const ss = $('#sortSel');
   if(ss) ss.onchange = () => { sortKey = ss.value || null; renderList(currentTraders, title); };
