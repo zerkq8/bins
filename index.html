@@ -531,6 +531,7 @@ function trueValueLabel(v){
 
 /* ---------- الفرز والمقارنة ---------- */
 let currentTraders = [], sortKey = null, sortDir = 'desc', compareIds = [];
+const coinCountCache = {}; // يُملأ تدريجياً بعد الرسم — لا يُعاد الجلب عند إعادة الرسم (فرز/مقارنة)
 
 function sortBar(){
   const opts = [
@@ -564,39 +565,46 @@ function sortTraders(list){
   return withVal.map(x => x.t);
 }
 
+/** بطاقة "عملات آخر ١٠ صفقات" — من كاش مملوء تدريجياً بعد الرسم، أو نائب "..." حتى يصل */
+function coinCountHtml(id){
+  const c = coinCountCache[id];
+  if(!c) return `<span class="mini" id="cc-${id}">عملات (آخر ١٠ صفقات) <b>...</b></span>`;
+  if(c.hidden) return `<span class="mini" id="cc-${id}">السجل مخفي</span>`;
+  if(c.error) return `<span class="mini" id="cc-${id}">عملات (آخر ١٠ صفقات) <b>—</b></span>`;
+  return `<span class="mini" id="cc-${id}">عملات (آخر ${c.of} صفقات) <b>${c.count}</b></span>`;
+}
+
+/** يجلب عدد العملات المختلفة لمن لم يُجلب له بعد، ويحدّث بطاقته مباشرة بلا إعادة رسم القائمة كلها */
+async function loadCoinCounts(traders){
+  const toFetch = traders.filter(t => !(t.id in coinCountCache));
+  await Promise.all(toFetch.map(async t => {
+    try{
+      const d = await getJSON('/api/trader/'+encodeURIComponent(t.id));
+      const symbols = new Set((d.closed||[]).map(c=>c.symbol));
+      coinCountCache[t.id] = d.hiddenHistory ? { hidden:true } : { count: symbols.size, of: d.closed.length };
+    }catch{
+      coinCountCache[t.id] = { error:true };
+    }
+    const el = document.getElementById('cc-'+t.id);
+    if(el) el.outerHTML = coinCountHtml(t.id);
+  }));
+}
+
 function renderList(traders, title){
   traders.forEach(t => cacheRows[t.id] = t);
   currentTraders = traders;
   $('#listTitle').textContent = title;
   $('#listMeta').textContent = traders.length + ' متداول';
   const ordered = sortTraders(traders);
-  $('#list').innerHTML = sortBar() + ordered.map((t,i)=>{
-    const age = daysSince(t.startTime);
-    const copierBad = has(t.copierPnl) && t.copierPnl < 0;
-    const tv = trueValue(t), tvLbl = trueValueLabel(tv);
+  $('#list').innerHTML = sortBar() + ordered.map((t)=>{
     const inCompare = compareIds.includes(t.id);
     return `<button class="trader-row" data-id="${t.id}">
-      <div class="tr-1">
-        <span class="rank">${String(i+1).padStart(2,'0')}</span>
-        <span class="tname">${esc(t.nickname)}</span>
-        <span class="troi ${cls(t.roi)}">${fmtPct(t.roi)}</span>
-      </div>
-      <div class="tr-2">
-        ${has(t.copierPnl)?`<span class="mini ${copierBad?'bad':'good'}">الناسخون <b>${fmtUsd(t.copierPnl)}</b></span>`:''}
-        ${has(t.mdd)?`<span class="mini ${t.mdd>40?'bad':''}">تراجع <b>${fmtNum(t.mdd,0)}%</b></span>`:''}
+      <span class="tname" style="display:block">${esc(t.nickname)}</span>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px">
         ${has(t.winRate)?`<span class="mini">رابحة <b>${fmtNum(t.winRate,0)}%</b></span>`:''}
-        ${has(age)?`<span class="mini ${age<90?'bad':''}"><b>${age}</b> يوم</span>`:''}
-        ${tvLbl?`<span class="mini ${tvLbl.cls}" title="عائد ÷ (تراجع×١٠)">قيمة <b>${fmtNum(tv,1)}</b></span>`:''}
+        ${coinCountHtml(t.id)}
       </div>
-      ${(()=>{ const f=[];
-        if(copierBad) f.push('الناسخون خاسرون');
-        if(has(age)&&age<90) f.push('سجل قصير');
-        if(has(t.mdd)&&t.mdd>40) f.push('تراجع مرتفع');
-        return f.length
-          ? `<div class="flags">${f.map(x=>`<span class="flag">${x}</span>`).join('')}</div>`
-          : `<div class="flags"><span class="clean">✓ بلا علامات خطر</span></div>`;
-      })()}
-      <div style="margin-top:7px;padding-inline-start:31px" onclick="event.stopPropagation()">
+      <div style="margin-top:7px" onclick="event.stopPropagation()">
         <button class="wbtn compare-toggle ${inCompare?'on':''}" data-cmp="${t.id}"
           style="${inCompare?'background:var(--amber);color:#15100A;border-color:var(--amber)':''}">
           ${inCompare?'✓ في المقارنة':'+ قارن'}
@@ -605,6 +613,7 @@ function renderList(traders, title){
     </button>`;
   }).join('');
   document.querySelectorAll('.trader-row').forEach(b => b.onclick = () => selectTrader(b.dataset.id));
+  loadCoinCounts(ordered);
 
   const ss = $('#sortSel');
   if(ss) ss.onchange = () => { sortKey = ss.value || null; renderList(currentTraders, title); };
